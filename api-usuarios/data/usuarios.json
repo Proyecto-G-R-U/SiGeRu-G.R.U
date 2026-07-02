@@ -1,0 +1,20 @@
+[
+    {
+        "id": 1,
+        "nombre": "Carlos Rodríguez",
+        "email": "admin@sigeru.uy",
+        "passwordHash": "$2y$10$9QVmo5R8JrqDFq7kl.OwIOvBqfY9S3e8iZozfol0etb8jxv\/ASoQe",
+        "rol": "administrador",
+        "especialidad": null,
+        "cuadrilla": null
+    },
+    {
+        "id": 2,
+        "nombre": "Facundo",
+        "email": "oramasfacu@gmail.com",
+        "passwordHash": "$2y$10$PtLSwaRUfeW0CR0II6APt.NGPC\/M3gLCeii7pOB9Jqz9DGMp4N0Ma",
+        "rol": "vecino",
+        "especialidad": null,
+        "cuadrilla": null
+    }
+]
