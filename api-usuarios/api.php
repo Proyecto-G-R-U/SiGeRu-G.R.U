@@ -21,10 +21,15 @@ require __DIR__ . '/app/models/OperarioClasificacion.php';
 require __DIR__ . '/app/models/OperarioVertedero.php';
 require __DIR__ . '/app/models/Vecino.php';
 require __DIR__ . '/app/models/RepositorioUsuarios.php';
+require __DIR__ . '/app/models/Cuadrilla.php';
+require __DIR__ . '/app/models/RepositorioCuadrillas.php';
 require __DIR__ . '/app/controllers/UsuarioController.php';
+require __DIR__ . '/app/controllers/CuadrillaController.php';
 
 use App\Models\RepositorioUsuarios;
+use App\Models\RepositorioCuadrillas;
 use App\Controllers\UsuarioController;
+use App\Controllers\CuadrillaController;
 
 // ---- CORS: permite que el frontend (otro puerto) consuma esta API ----
 header('Access-Control-Allow-Origin: *');
@@ -49,8 +54,9 @@ if ($base !== '/' && $base !== '' && str_starts_with($ruta, $base)) {
 }
 $ruta = '/' . trim($ruta, '/');   // normalizamos: siempre empieza con "/"
 
-// ---- Armamos el controlador ----
+// ---- Armamos los controladores ----
 $controller = new UsuarioController(new RepositorioUsuarios());
+$cuadrillaCtrl = new CuadrillaController(new RepositorioCuadrillas());
 
 // ---- Ruteo: método + ruta -> acción ----
 switch ($metodo . ' ' . $ruta) {
@@ -68,6 +74,18 @@ switch ($metodo . ' ' . $ruta) {
 
     case 'POST /usuarios/eliminar':
         $controller->eliminar();
+        break;
+
+    case 'GET /cuadrillas':
+        $cuadrillaCtrl->listar();
+        break;
+
+    case 'POST /cuadrillas':
+        $cuadrillaCtrl->crear();
+        break;
+
+    case 'POST /cuadrillas/eliminar':
+        $cuadrillaCtrl->eliminar();
         break;
 
     default:

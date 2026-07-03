@@ -110,3 +110,33 @@ de eliminar (ruta `POST /usuarios/eliminar`).
 ### Para reiniciar los datos de prueba
 Borrá el archivo `api-usuarios/data/usuarios.json`. Se regenera solo con las
 cuentas iniciales en la próxima petición.
+
+## Flotas, cuadrillas y asignación de camiones
+
+Se agregó, con el mismo patrón de persistencia JSON (sin base de datos):
+
+**Cuadrillas** (en la sección Usuarios, solo admin). Agrupan operarios. Se crean,
+listan y eliminan. Se guardan en `api-usuarios/data/cuadrillas.json`.
+
+**Flotas** (nueva sección Flotas, solo admin). Agrupan camiones. Se ven como un
+panel gráfico: una tarjeta por flota con sus camiones dentro. Al clickear un
+camión se muestra la cuadrilla asignada y sus operarios. Se guardan en
+`api-recoleccion/data/flotas.json`.
+
+**Camiones** (formalizado). Ahora persisten en `api-recoleccion/data/camiones.json`
+e incluyen dos relaciones:
+- `flotaId`: a qué flota pertenece (se elige al crear el camión).
+- `cuadrillaId`: qué cuadrilla tiene asignada (se elige al crear, o se cambia
+  después con el selector en la tabla de Camiones).
+
+El modelo de relaciones es: Flota (1) → Camiones (N); Camión (1) → Cuadrilla (1);
+Cuadrilla (1) → Operarios (N).
+
+### Endpoints nuevos
+- API Usuarios:    `GET/POST /cuadrillas`, `POST /cuadrillas/eliminar`
+- API Recolección: `GET/POST /flotas`, `POST /flotas/eliminar`,
+                   `POST /camiones/eliminar`, `POST /camiones/asignar-cuadrilla`
+
+### Reiniciar datos
+Borrá los `.json` de las carpetas `data/` (en api-usuarios y api-recoleccion) y se
+regeneran con los datos de prueba.

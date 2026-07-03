@@ -77,6 +77,11 @@
     // Usuario logueado (para saber su rol/especialidad y su email).
     let usuarioActual = null;
 
+    // Caches en memoria para mostrar nombres (no ids) de cuadrillas y flotas.
+    let cacheCuadrillas = [];
+    let cacheFlotas = [];
+    let cacheUsuarios = [];
+
     // -------------------------------------------------------------
     // CONFIGURACIÓN DE CADA ROL: color (clase de tema), título del
     // panel, texto del badge y el "tipo" con el que decidimos la vista.
@@ -176,6 +181,7 @@
                 { id: 'usuarios',     icono: 'group',          texto: 'Usuarios' },
                 { id: 'contenedores', icono: 'delete',         texto: 'Contenedores' },
                 { id: 'camiones',     icono: 'local_shipping', texto: 'Camiones' },
+                { id: 'flotas',       icono: 'grid_view',      texto: 'Flotas' },
             );
         }
 
@@ -210,9 +216,10 @@
         }
 
         // Secciones de administrador
-        if (id === 'usuarios')     { content.innerHTML = plantillaUsuarios();     cargarUsuarios(); }
+        if (id === 'usuarios')     { content.innerHTML = plantillaUsuarios();     cargarUsuarios(); cargarCuadrillas(); }
         if (id === 'contenedores') { content.innerHTML = plantillaContenedores(); cargarContenedores(); }
-        if (id === 'camiones')     { content.innerHTML = plantillaCamiones();     cargarCamiones(); }
+        if (id === 'camiones')     { content.innerHTML = plantillaCamiones();     cargarCamiones(); cargarFlotasEnSelect(); cargarCuadrillasEnSelect(); }
+        if (id === 'flotas')       { content.innerHTML = plantillaFlotas();       cargarPanelFlotas(); }
     }
 
     // =============================================================
@@ -237,7 +244,16 @@
         + '<div class="full"><button type="submit" class="btn">Agregar usuario</button></div>'
         + '</form><p class="msg" id="u-msg"></p></div>'
         + '<table class="tabla"><thead><tr><th>ID</th><th>Nombre</th><th>Email</th>'
-        + '<th>Rol</th><th>Acción</th></tr></thead><tbody id="tabla-usuarios"></tbody></table>';
+        + '<th>Rol</th><th>Acción</th></tr></thead><tbody id="tabla-usuarios"></tbody></table>'
+        + '<h2 class="sec-titulo">Cuadrillas</h2>'
+        + '<div class="panel"><h3>Nueva cuadrilla</h3>'
+        + '<form id="form-cuadrilla" class="form-inline">'
+        + '<div><label>Nombre</label><input type="text" id="cu-nombre" required></div>'
+        + '<div><label>Zona</label><input type="text" id="cu-zona"></div>'
+        + '<div class="full"><button type="submit" class="btn">Crear cuadrilla</button></div>'
+        + '</form><p class="msg" id="cu-msg"></p></div>'
+        + '<table class="tabla"><thead><tr><th>ID</th><th>Nombre</th><th>Zona</th>'
+        + '<th>Operarios</th><th>Acción</th></tr></thead><tbody id="tabla-cuadrillas"></tbody></table>';
     }
 
     function plantillaContenedores() {
@@ -271,10 +287,24 @@
         + '<div><label>Disponibilidad</label><select id="k-disp">'
         + '<option value="disponible">Disponible</option>'
         + '<option value="en_ruta">En ruta</option></select></div>'
+        + '<div><label>Flota</label><select id="k-flota"></select></div>'
+        + '<div><label>Cuadrilla</label><select id="k-cuadrilla"></select></div>'
         + '<div class="full"><button type="submit" class="btn">Agregar camión</button></div>'
         + '</form><p class="msg" id="k-msg"></p></div>'
         + '<table class="tabla"><thead><tr><th>ID</th><th>Patente</th><th>Modelo</th>'
-        + '<th>Estado</th><th>Disponibilidad</th></tr></thead><tbody id="tabla-camiones"></tbody></table>';
+        + '<th>Estado</th><th>Disponibilidad</th><th>Flota</th><th>Cuadrilla</th>'
+        + '<th>Acción</th></tr></thead><tbody id="tabla-camiones"></tbody></table>';
+    }
+
+    function plantillaFlotas() {
+        return ''
+        + '<div class="panel"><h3>Nueva flota</h3>'
+        + '<form id="form-flota" class="form-inline">'
+        + '<div><label>Nombre</label><input type="text" id="f-nombre" required></div>'
+        + '<div><label>Zona</label><input type="text" id="f-zona"></div>'
+        + '<div class="full"><button type="submit" class="btn">Crear flota</button></div>'
+        + '</form><p class="msg" id="f-msg"></p></div>'
+        + '<div id="panel-flotas" class="flotas-grid"></div>';
     }
 
     // Muestra/oculta el selector de especialidad según el rol elegido.
@@ -412,19 +442,134 @@
     }
 
     // =============================================================
+    //  CUADRILLAS (dentro de la sección Usuarios)
+    // =============================================================
+    async function cargarCuadrillas() {
+        const tbody = document.getElementById('tabla-cuadrillas');
+        if (!tbody) return;
+        try {
+            const resp = await fetch(API_USUARIOS + '/cuadrillas');
+            cacheCuadrillas = await resp.json();
+            tbody.innerHTML = cacheCuadrillas.map(function (c) {
+                const cant = (c.operarios || []).length;
+                return '<tr><td>' + c.id + '</td><td>' + c.nombre + '</td><td>' +
+                    (c.zona || '—') + '</td><td>' + cant + ' operario(s)</td><td>' +
+                    '<button class="btn-eliminar" onclick="eliminarCuadrilla(' + c.id + ')">Eliminar</button>' +
+                    '</td></tr>';
+            }).join('');
+        } catch (err) {
+            tbody.innerHTML = '<tr><td colspan="5">Error al conectar con API Usuarios.</td></tr>';
+        }
+        const form = document.getElementById('form-cuadrilla');
+        if (form) form.onsubmit = altaCuadrilla;
+    }
+
+    async function altaCuadrilla(e) {
+        e.preventDefault();
+        const msg = document.getElementById('cu-msg');
+        msg.className = 'msg';
+        const datos = {
+            nombre: document.getElementById('cu-nombre').value.trim(),
+            zona:   document.getElementById('cu-zona').value.trim(),
+        };
+        try {
+            const resp = await fetch(API_USUARIOS + '/cuadrillas', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos),
+            });
+            const resultado = await resp.json();
+            if (resp.ok) {
+                msg.textContent = 'Cuadrilla creada.'; msg.classList.add('ok');
+                e.target.reset(); cargarCuadrillas();
+            } else {
+                msg.textContent = resultado.error; msg.classList.add('err');
+            }
+        } catch (err) {
+            msg.textContent = 'Error de conexión.'; msg.classList.add('err');
+        }
+    }
+
+    async function eliminarCuadrilla(id) {
+        if (!confirm('¿Eliminar esta cuadrilla?')) return;
+        try {
+            const resp = await fetch(API_USUARIOS + '/cuadrillas/eliminar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id }),
+            });
+            if (resp.ok) cargarCuadrillas();
+            else { const r = await resp.json(); alert(r.error || 'No se pudo eliminar.'); }
+        } catch (err) { alert('Error de conexión.'); }
+    }
+
+    // Devuelve el nombre de una cuadrilla por id (usa el cache).
+    function nombreCuadrilla(id) {
+        if (id === null || id === undefined) return '—';
+        const c = cacheCuadrillas.find(function (x) { return x.id === id; });
+        return c ? c.nombre : ('#' + id);
+    }
+    function nombreFlota(id) {
+        if (id === null || id === undefined) return '—';
+        const f = cacheFlotas.find(function (x) { return x.id === id; });
+        return f ? f.nombre : ('#' + id);
+    }
+
+    // Carga los selects de flota y cuadrilla del formulario de camión.
+    async function cargarFlotasEnSelect() {
+        try {
+            const resp = await fetch(API_RECOLECCION + '/flotas');
+            cacheFlotas = await resp.json();
+        } catch (err) { cacheFlotas = []; }
+        const sel = document.getElementById('k-flota');
+        if (sel) {
+            sel.innerHTML = '<option value="">(sin flota)</option>' +
+                cacheFlotas.map(function (f) {
+                    return '<option value="' + f.id + '">' + f.nombre + '</option>';
+                }).join('');
+        }
+    }
+    async function cargarCuadrillasEnSelect() {
+        try {
+            const resp = await fetch(API_USUARIOS + '/cuadrillas');
+            cacheCuadrillas = await resp.json();
+        } catch (err) { cacheCuadrillas = []; }
+        const sel = document.getElementById('k-cuadrilla');
+        if (sel) {
+            sel.innerHTML = '<option value="">(sin cuadrilla)</option>' +
+                cacheCuadrillas.map(function (c) {
+                    return '<option value="' + c.id + '">' + c.nombre + '</option>';
+                }).join('');
+        }
+    }
+
+    // =============================================================
     //  CAMIONES
     // =============================================================
     async function cargarCamiones() {
         const tbody = document.getElementById('tabla-camiones');
+        // Aseguramos tener flotas y cuadrillas en cache para mostrar nombres.
+        if (cacheFlotas.length === 0) { try { cacheFlotas = await (await fetch(API_RECOLECCION + '/flotas')).json(); } catch (e) {} }
+        if (cacheCuadrillas.length === 0) { try { cacheCuadrillas = await (await fetch(API_USUARIOS + '/cuadrillas')).json(); } catch (e) {} }
         try {
             const resp = await fetch(API_RECOLECCION + '/camiones');
             const lista = await resp.json();
             tbody.innerHTML = lista.map(function (k) {
+                // Selector de cuadrilla en línea para asignar.
+                let opciones = '<option value="">(sin cuadrilla)</option>' +
+                    cacheCuadrillas.map(function (c) {
+                        const sel = (c.id === k.cuadrillaId) ? ' selected' : '';
+                        return '<option value="' + c.id + '"' + sel + '>' + c.nombre + '</option>';
+                    }).join('');
+                const selectCuad = '<select onchange="asignarCuadrilla(' + k.id + ', this.value)">' + opciones + '</select>';
                 return '<tr><td>' + k.id + '</td><td>' + k.patente + '</td><td>' +
-                    k.modelo + '</td><td>' + k.estado + '</td><td>' + k.disponibilidad + '</td></tr>';
+                    k.modelo + '</td><td>' + k.estado + '</td><td>' + k.disponibilidad + '</td><td>' +
+                    nombreFlota(k.flotaId) + '</td><td>' + selectCuad + '</td><td>' +
+                    '<button class="btn-eliminar" onclick="eliminarCamion(' + k.id + ')">Eliminar</button>' +
+                    '</td></tr>';
             }).join('');
         } catch (err) {
-            tbody.innerHTML = '<tr><td colspan="5">Error al conectar con API Recolección.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8">Error al conectar con API Recolección.</td></tr>';
         }
         const form = document.getElementById('form-camion');
         if (form) form.onsubmit = altaCamion;
@@ -439,6 +584,8 @@
             modelo:         document.getElementById('k-modelo').value.trim(),
             estado:         document.getElementById('k-estado').value,
             disponibilidad: document.getElementById('k-disp').value,
+            flotaId:        document.getElementById('k-flota').value,
+            cuadrillaId:    document.getElementById('k-cuadrilla').value,
         };
         try {
             const resp = await fetch(API_RECOLECCION + '/camiones', {
@@ -456,6 +603,128 @@
         } catch (err) {
             msg.textContent = 'Error de conexión.'; msg.classList.add('err');
         }
+    }
+
+    async function asignarCuadrilla(camionId, cuadrillaId) {
+        try {
+            const resp = await fetch(API_RECOLECCION + '/camiones/asignar-cuadrilla', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: camionId, cuadrillaId: cuadrillaId || null }),
+            });
+            if (!resp.ok) { const r = await resp.json(); alert(r.error || 'No se pudo asignar.'); }
+        } catch (err) { alert('Error de conexión.'); }
+    }
+
+    async function eliminarCamion(id) {
+        if (!confirm('¿Eliminar este camión?')) return;
+        try {
+            const resp = await fetch(API_RECOLECCION + '/camiones/eliminar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id }),
+            });
+            if (resp.ok) cargarCamiones();
+            else { const r = await resp.json(); alert(r.error || 'No se pudo eliminar.'); }
+        } catch (err) { alert('Error de conexión.'); }
+    }
+
+    // =============================================================
+    //  FLOTAS (panel gráfico)
+    // =============================================================
+    async function altaFlota(e) {
+        e.preventDefault();
+        const msg = document.getElementById('f-msg');
+        msg.className = 'msg';
+        const datos = {
+            nombre: document.getElementById('f-nombre').value.trim(),
+            zona:   document.getElementById('f-zona').value.trim(),
+        };
+        try {
+            const resp = await fetch(API_RECOLECCION + '/flotas', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos),
+            });
+            const resultado = await resp.json();
+            if (resp.ok) {
+                msg.textContent = 'Flota creada.'; msg.classList.add('ok');
+                e.target.reset(); cargarPanelFlotas();
+            } else {
+                msg.textContent = resultado.error; msg.classList.add('err');
+            }
+        } catch (err) {
+            msg.textContent = 'Error de conexión.'; msg.classList.add('err');
+        }
+    }
+
+    // Dibuja el panel: una tarjeta por flota, con sus camiones dentro.
+    // Al clickear un camión se muestra la cuadrilla asignada.
+    async function cargarPanelFlotas() {
+        const cont = document.getElementById('panel-flotas');
+        const form = document.getElementById('form-flota');
+        if (form) form.onsubmit = altaFlota;
+
+        try {
+            cacheFlotas     = await (await fetch(API_RECOLECCION + '/flotas')).json();
+            cacheCuadrillas = await (await fetch(API_USUARIOS + '/cuadrillas')).json();
+            const camiones  = await (await fetch(API_RECOLECCION + '/camiones')).json();
+
+            cont.innerHTML = cacheFlotas.map(function (f) {
+                const suyos = camiones.filter(function (k) { return k.flotaId === f.id; });
+                const cards = suyos.length === 0
+                    ? '<p class="flota-vacia">Sin camiones asignados</p>'
+                    : suyos.map(function (k) {
+                        return '<div class="camion-card" onclick="verCuadrillaCamion(' + k.id + ', \'' +
+                            k.patente.replace(/'/g, "") + '\', ' + (k.cuadrillaId === null ? 'null' : k.cuadrillaId) + ')">' +
+                            '<span class="material-icons-outlined">local_shipping</span>' +
+                            '<span class="camion-pat">' + k.patente + '</span>' +
+                            '<span class="camion-modelo">' + k.modelo + '</span></div>';
+                    }).join('');
+                return '<div class="flota-card"><div class="flota-head">' +
+                    '<h3>' + f.nombre + '</h3><span class="flota-zona">' + (f.zona || '') + '</span>' +
+                    '<button class="btn-eliminar" onclick="eliminarFlota(' + f.id + ')">Eliminar</button></div>' +
+                    '<div class="camiones-wrap">' + cards + '</div></div>';
+            }).join('') || '<p class="flota-vacia">No hay flotas. Creá una arriba.</p>';
+        } catch (err) {
+            cont.innerHTML = '<p class="flota-vacia">Error al conectar con las APIs.</p>';
+        }
+    }
+
+    // Muestra la cuadrilla (y sus operarios) del camión clickeado.
+    async function verCuadrillaCamion(camionId, patente, cuadrillaId) {
+        if (cuadrillaId === null || cuadrillaId === undefined || cuadrillaId === 'null') {
+            alert('El camión ' + patente + ' no tiene cuadrilla asignada.');
+            return;
+        }
+        // Buscamos la cuadrilla en cache
+        const cuad = cacheCuadrillas.find(function (c) { return c.id === cuadrillaId; });
+        if (!cuad) { alert('Cuadrilla no encontrada.'); return; }
+
+        // Traemos los usuarios para resolver los nombres de los operarios.
+        if (cacheUsuarios.length === 0) {
+            try { cacheUsuarios = await (await fetch(API_USUARIOS + '/usuarios')).json(); } catch (e) {}
+        }
+        const nombres = (cuad.operarios || []).map(function (opId) {
+            const u = cacheUsuarios.find(function (x) { return x.id === opId; });
+            return u ? ('• ' + u.nombre + (u.especialidad ? ' (' + u.especialidad + ')' : '')) : ('• #' + opId);
+        });
+        const detalle = nombres.length ? nombres.join('\n') : '(sin operarios asignados)';
+        alert('Camión ' + patente + '\nCuadrilla: ' + cuad.nombre +
+              (cuad.zona ? ' — ' + cuad.zona : '') + '\n\nOperarios:\n' + detalle);
+    }
+
+    async function eliminarFlota(id) {
+        if (!confirm('¿Eliminar esta flota?')) return;
+        try {
+            const resp = await fetch(API_RECOLECCION + '/flotas/eliminar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id }),
+            });
+            if (resp.ok) cargarPanelFlotas();
+            else { const r = await resp.json(); alert(r.error || 'No se pudo eliminar.'); }
+        } catch (err) { alert('Error de conexión.'); }
     }
 </script>
 </body>

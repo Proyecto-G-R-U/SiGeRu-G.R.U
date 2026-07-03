@@ -1,0 +1,17 @@
+[
+    {
+        "id": 1,
+        "nombre": "Flota Norte",
+        "zona": "Zona Norte"
+    },
+    {
+        "id": 2,
+        "nombre": "Flota Sur",
+        "zona": "Zona Sur"
+    },
+    {
+        "id": 3,
+        "nombre": "Flota Este",
+        "zona": "zona este"
+    }
+]

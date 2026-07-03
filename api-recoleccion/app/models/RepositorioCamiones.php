@@ -4,39 +4,141 @@ declare(strict_types=1);
 namespace App\Models;
 
 /**
- * RepositorioCamiones: almacén EN MEMORIA de la flota.
- * Sin base de datos todavía (1ra entrega). En la 2da entrega pasa a MySQL.
+ * RepositorioCamiones: almacén de camiones con persistencia JSON
+ * (mismo patrón que usuarios). Vive en api-recoleccion/data/camiones.json
  */
 class RepositorioCamiones
 {
-    /** @var Camion[] */
-    private array $camiones = [];
-    private int $siguienteId = 1;
+    private string $archivo;
 
     public function __construct()
     {
-        $this->cargarDatosDePrueba();
+        $this->archivo = __DIR__ . '/../../data/camiones.json';
+        $this->inicializarSiHaceFalta();
     }
 
-    private function cargarDatosDePrueba(): void
+    private function inicializarSiHaceFalta(): void
     {
-        $this->camiones[] = new Camion($this->siguienteId++, 'STP 1234', 'Volvo FE', 'operativo', 'en_ruta');
-        $this->camiones[] = new Camion($this->siguienteId++, 'STP 5678', 'Mercedes Atego', 'operativo', 'disponible');
-        $this->camiones[] = new Camion($this->siguienteId++, 'STP 9012', 'Iveco Tector', 'mantenimiento', 'disponible');
+        if (file_exists($this->archivo)) {
+            return;
+        }
+        $carpeta = dirname($this->archivo);
+        if (!is_dir($carpeta)) {
+            mkdir($carpeta, 0777, true);
+        }
+        // Datos de prueba: 3 camiones repartidos en las 2 flotas iniciales.
+        $iniciales = [
+            ['id' => 1, 'patente' => 'STP 1234', 'modelo' => 'Volvo FE',       'estado' => 'operativo',     'disponibilidad' => 'en_ruta',    'flotaId' => 1, 'cuadrillaId' => 1],
+            ['id' => 2, 'patente' => 'STP 5678', 'modelo' => 'Mercedes Atego', 'estado' => 'operativo',     'disponibilidad' => 'disponible', 'flotaId' => 1, 'cuadrillaId' => null],
+            ['id' => 3, 'patente' => 'STP 9012', 'modelo' => 'Iveco Tector',   'estado' => 'mantenimiento', 'disponibilidad' => 'disponible', 'flotaId' => 2, 'cuadrillaId' => null],
+        ];
+        $this->guardarCrudo($iniciales);
     }
 
+    private function leerCrudo(): array
+    {
+        $contenido = file_get_contents($this->archivo);
+        $datos = json_decode($contenido, true);
+        return is_array($datos) ? $datos : [];
+    }
+
+    private function guardarCrudo(array $filas): void
+    {
+        file_put_contents(
+            $this->archivo,
+            json_encode($filas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
+        );
+    }
+
+    private function aObjeto(array $f): Camion
+    {
+        return new Camion(
+            $f['id'],
+            $f['patente'],
+            $f['modelo'],
+            $f['estado'],
+            $f['disponibilidad'],
+            isset($f['flotaId']) ? ($f['flotaId'] !== null ? (int)$f['flotaId'] : null) : null,
+            isset($f['cuadrillaId']) ? ($f['cuadrillaId'] !== null ? (int)$f['cuadrillaId'] : null) : null
+        );
+    }
+
+    private function aFila(Camion $c): array
+    {
+        return [
+            'id'             => $c->getId(),
+            'patente'        => $c->getPatente(),
+            'modelo'         => $c->getModelo(),
+            'estado'         => $c->getEstado(),
+            'disponibilidad' => $c->getDisponibilidad(),
+            'flotaId'        => $c->getFlotaId(),
+            'cuadrillaId'    => $c->getCuadrillaId(),
+        ];
+    }
+
+    /** @return Camion[] */
     public function todos(): array
     {
-        return $this->camiones;
+        return array_map([$this, 'aObjeto'], $this->leerCrudo());
+    }
+
+    public function buscarPorId(int $id): ?Camion
+    {
+        foreach ($this->leerCrudo() as $f) {
+            if ((int)$f['id'] === $id) {
+                return $this->aObjeto($f);
+            }
+        }
+        return null;
     }
 
     public function agregar(Camion $c): void
     {
-        $this->camiones[] = $c;
+        $filas = $this->leerCrudo();
+        $filas[] = $this->aFila($c);
+        $this->guardarCrudo($filas);
+    }
+
+    /** Reemplaza un camión existente (por id) con su versión actualizada. */
+    public function actualizar(Camion $c): bool
+    {
+        $filas = $this->leerCrudo();
+        $encontrado = false;
+        foreach ($filas as $i => $f) {
+            if ((int)$f['id'] === $c->getId()) {
+                $filas[$i] = $this->aFila($c);
+                $encontrado = true;
+                break;
+            }
+        }
+        if (!$encontrado) {
+            return false;
+        }
+        $this->guardarCrudo($filas);
+        return true;
+    }
+
+    public function eliminar(int $id): bool
+    {
+        $filas = $this->leerCrudo();
+        $original = count($filas);
+        $filas = array_values(array_filter($filas, fn($f) => (int)$f['id'] !== $id));
+        if (count($filas) === $original) {
+            return false;
+        }
+        $this->guardarCrudo($filas);
+        return true;
     }
 
     public function proximoId(): int
     {
-        return $this->siguienteId++;
+        $filas = $this->leerCrudo();
+        $maxId = 0;
+        foreach ($filas as $f) {
+            if ((int)$f['id'] > $maxId) {
+                $maxId = (int)$f['id'];
+            }
+        }
+        return $maxId + 1;
     }
 }

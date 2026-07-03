@@ -2,16 +2,22 @@
 declare(strict_types=1);
 
 /**
- * api.php — PUNTO DE ENTRADA de la API de Recolección (camiones, sin core).
+ * api.php — PUNTO DE ENTRADA de la API de Recolección (camiones y flotas).
  * Levantar con:  php -S localhost:9002 api.php   (desde la carpeta api-recoleccion/)
+ * O con XAMPP/Apache usando el .htaccess incluido.
  */
 
 require __DIR__ . '/app/models/Camion.php';
 require __DIR__ . '/app/models/RepositorioCamiones.php';
+require __DIR__ . '/app/models/Flota.php';
+require __DIR__ . '/app/models/RepositorioFlotas.php';
 require __DIR__ . '/app/controllers/CamionController.php';
+require __DIR__ . '/app/controllers/FlotaController.php';
 
 use App\Models\RepositorioCamiones;
+use App\Models\RepositorioFlotas;
 use App\Controllers\CamionController;
+use App\Controllers\FlotaController;
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
@@ -31,15 +37,36 @@ if ($base !== '/' && $base !== '' && str_starts_with($ruta, $base)) {
 }
 $ruta = '/' . trim($ruta, '/');
 
-$controller = new CamionController(new RepositorioCamiones());
+$camionCtrl = new CamionController(new RepositorioCamiones());
+$flotaCtrl  = new FlotaController(new RepositorioFlotas());
 
 switch ($metodo . ' ' . $ruta) {
     case 'GET /camiones':
-        $controller->listar();
+        $camionCtrl->listar();
         break;
 
     case 'POST /camiones':
-        $controller->crear();
+        $camionCtrl->crear();
+        break;
+
+    case 'POST /camiones/eliminar':
+        $camionCtrl->eliminar();
+        break;
+
+    case 'POST /camiones/asignar-cuadrilla':
+        $camionCtrl->asignarCuadrilla();
+        break;
+
+    case 'GET /flotas':
+        $flotaCtrl->listar();
+        break;
+
+    case 'POST /flotas':
+        $flotaCtrl->crear();
+        break;
+
+    case 'POST /flotas/eliminar':
+        $flotaCtrl->eliminar();
         break;
 
     default:

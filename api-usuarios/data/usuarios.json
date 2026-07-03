@@ -3,45 +3,45 @@
         "id": 1,
         "nombre": "Carlos Rodríguez",
         "email": "admin@sigeru.uy",
-        "passwordHash": "$2y$10$sdq0KvwhArpHNMyDMjzyEObd4AlPNGKZT1skec\/9kVERtMfCbAlpu",
+        "passwordHash": "$2y$10$9uLQmRIjsBtGxh72pdUJsuksOr6mnkVJcgJxSOYKmcJXMhpY.PQeK",
         "rol": "administrador",
         "especialidad": null,
         "cuadrilla": null
     },
     {
         "id": 2,
-        "nombre": "Facundo Oramas",
-        "email": "oramasfacu@gmail.com",
-        "passwordHash": "$2y$10$rlNr85vxEwkzdncLENIb4.EIWr6BtyuEYYiFbve4VFUN3R\/I.AF6i",
-        "rol": "vecino",
-        "especialidad": null,
-        "cuadrilla": null
+        "nombre": "Marta Pérez",
+        "email": "recoleccion@sigeru.uy",
+        "passwordHash": "$2y$10$9uLQmRIjsBtGxh72pdUJsuksOr6mnkVJcgJxSOYKmcJXMhpY.PQeK",
+        "rol": "operario",
+        "especialidad": "recoleccion",
+        "cuadrilla": "Cuadrilla Norte"
     },
     {
         "id": 3,
-        "nombre": "Facundo",
-        "email": "1@gmail.com",
-        "passwordHash": "$2y$10$tSrzhiKihacIO8NXIplaueb\/ZIaUvTqRgSBnsdVqNCGOok\/xA7xrO",
-        "rol": "operario",
-        "especialidad": "recoleccion",
-        "cuadrilla": null
-    },
-    {
-        "id": 4,
-        "nombre": "Facundo",
-        "email": "2@gmail.com",
-        "passwordHash": "$2y$10$HupOOFMWETA2m5mmc.TOkOpE35ydYLo\/s1URWbHw2.q8dD1Jz4.2i",
+        "nombre": "Julián Fernández",
+        "email": "clasificacion@sigeru.uy",
+        "passwordHash": "$2y$10$9uLQmRIjsBtGxh72pdUJsuksOr6mnkVJcgJxSOYKmcJXMhpY.PQeK",
         "rol": "operario",
         "especialidad": "clasificacion",
         "cuadrilla": null
     },
     {
-        "id": 5,
-        "nombre": "Facundo",
-        "email": "3@gmail.com",
-        "passwordHash": "$2y$10$KGPpZ0kD\/TBDL8upEL9x\/OyXelKkjEamBb0j6xCjBooOM0Bk2f4t6",
+        "id": 4,
+        "nombre": "Ana Silva",
+        "email": "vertedero@sigeru.uy",
+        "passwordHash": "$2y$10$9uLQmRIjsBtGxh72pdUJsuksOr6mnkVJcgJxSOYKmcJXMhpY.PQeK",
         "rol": "operario",
         "especialidad": "vertedero",
+        "cuadrilla": null
+    },
+    {
+        "id": 5,
+        "nombre": "Vecino de Prueba",
+        "email": "vecino@gmail.com",
+        "passwordHash": "$2y$10$9uLQmRIjsBtGxh72pdUJsuksOr6mnkVJcgJxSOYKmcJXMhpY.PQeK",
+        "rol": "vecino",
+        "especialidad": null,
         "cuadrilla": null
     }
 ]

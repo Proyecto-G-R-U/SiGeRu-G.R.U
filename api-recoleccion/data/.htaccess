@@ -1,0 +1,2 @@
+# Bloquea el acceso web directo a esta carpeta (datos en JSON).
+Require all denied

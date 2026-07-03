@@ -7,8 +7,11 @@ use App\Models\RepositorioCamiones;
 use App\Models\Camion;
 
 /**
- * CamionController: lógica de la API de Recolección.
- * Versión sin core: arma el JSON con sus propios helpers.
+ * CamionController: gestión de camiones.
+ *   listar()          -> GET  /camiones
+ *   crear()           -> POST /camiones
+ *   eliminar()        -> POST /camiones/eliminar
+ *   asignarCuadrilla()-> POST /camiones/asignar-cuadrilla
  */
 class CamionController
 {
@@ -19,13 +22,11 @@ class CamionController
         $this->repo = $repo;
     }
 
-    /** GET /camiones — listado completo de la flota. */
     public function listar(): void
     {
         $this->responder($this->repo->todos(), 200);
     }
 
-    /** POST /camiones — alta de camión. */
     public function crear(): void
     {
         $datos = $this->leerJson();
@@ -33,6 +34,8 @@ class CamionController
         $modelo         = trim($datos['modelo'] ?? '');
         $estado         = $datos['estado'] ?? 'operativo';
         $disponibilidad = $datos['disponibilidad'] ?? 'disponible';
+        $flotaId        = isset($datos['flotaId']) && $datos['flotaId'] !== '' ? (int)$datos['flotaId'] : null;
+        $cuadrillaId    = isset($datos['cuadrillaId']) && $datos['cuadrillaId'] !== '' ? (int)$datos['cuadrillaId'] : null;
 
         if ($patente === '' || $modelo === '') {
             $this->error('Patente y modelo son obligatorios.', 400);
@@ -43,17 +46,49 @@ class CamionController
             $patente,
             $modelo,
             $estado,
-            $disponibilidad
+            $disponibilidad,
+            $flotaId,
+            $cuadrillaId
         );
         $this->repo->agregar($camion);
 
-        $this->responder([
-            'mensaje' => 'Camión creado correctamente.',
-            'camion'  => $camion,
-        ], 201);
+        $this->responder(['mensaje' => 'Camión creado correctamente.', 'camion' => $camion], 201);
     }
 
-    // ---------------- Helpers internos ----------------
+    public function eliminar(): void
+    {
+        $datos = $this->leerJson();
+        $id = (int)($datos['id'] ?? 0);
+        if ($id <= 0) {
+            $this->error('Falta el id del camión.', 400);
+        }
+        if (!$this->repo->eliminar($id)) {
+            $this->error('No existe un camión con ese id.', 404);
+        }
+        $this->responder(['mensaje' => 'Camión eliminado.'], 200);
+    }
+
+    /**
+     * POST /camiones/asignar-cuadrilla — asigna (o quita) la cuadrilla de un
+     * camión. Recibe { id, cuadrillaId }. cuadrillaId null quita la asignación.
+     */
+    public function asignarCuadrilla(): void
+    {
+        $datos = $this->leerJson();
+        $id = (int)($datos['id'] ?? 0);
+        $cuadrillaId = isset($datos['cuadrillaId']) && $datos['cuadrillaId'] !== '' && $datos['cuadrillaId'] !== null
+            ? (int)$datos['cuadrillaId'] : null;
+
+        $camion = $this->repo->buscarPorId($id);
+        if ($camion === null) {
+            $this->error('No existe un camión con ese id.', 404);
+        }
+
+        $camion->setCuadrillaId($cuadrillaId);
+        $this->repo->actualizar($camion);
+
+        $this->responder(['mensaje' => 'Cuadrilla asignada al camión.', 'camion' => $camion], 200);
+    }
 
     private function leerJson(): array
     {
