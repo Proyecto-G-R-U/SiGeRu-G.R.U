@@ -116,6 +116,72 @@ class RepositorioCuadrillas
         return true;
     }
 
+    /**
+     * Agrega un operario a una cuadrilla, garantizando EXCLUSIVIDAD: primero lo
+     * quita de cualquier otra cuadrilla en la que estuviera, y luego lo agrega
+     * a la indicada. Así un operario nunca está en dos cuadrillas a la vez.
+     * Devuelve true si la cuadrilla destino existe.
+     */
+    public function agregarOperario(int $cuadrillaId, int $operarioId): bool
+    {
+        $filas = $this->leerCrudo();
+        $existeDestino = false;
+
+        foreach ($filas as $i => $f) {
+            $operarios = array_map('intval', $f['operarios'] ?? []);
+            // Lo sacamos de todas las cuadrillas (por si estaba en otra).
+            $operarios = array_values(array_filter($operarios, fn($op) => $op !== $operarioId));
+            // Si esta es la cuadrilla destino, lo agregamos.
+            if ((int)$f['id'] === $cuadrillaId) {
+                $operarios[] = $operarioId;
+                $existeDestino = true;
+            }
+            $filas[$i]['operarios'] = array_values($operarios);
+        }
+
+        if (!$existeDestino) {
+            return false;
+        }
+        $this->guardarCrudo($filas);
+        return true;
+    }
+
+    /** Quita un operario de una cuadrilla. Devuelve true si la cuadrilla existe. */
+    public function quitarOperario(int $cuadrillaId, int $operarioId): bool
+    {
+        $filas = $this->leerCrudo();
+        $encontrado = false;
+        foreach ($filas as $i => $f) {
+            if ((int)$f['id'] === $cuadrillaId) {
+                $operarios = array_map('intval', $f['operarios'] ?? []);
+                $filas[$i]['operarios'] = array_values(array_filter($operarios, fn($op) => $op !== $operarioId));
+                $encontrado = true;
+                break;
+            }
+        }
+        if (!$encontrado) {
+            return false;
+        }
+        $this->guardarCrudo($filas);
+        return true;
+    }
+
+    /**
+     * Devuelve los ids de operarios que YA están en alguna cuadrilla.
+     * Sirve para calcular los "libres".
+     * @return int[]
+     */
+    public function operariosOcupados(): array
+    {
+        $ocupados = [];
+        foreach ($this->leerCrudo() as $f) {
+            foreach ($f['operarios'] ?? [] as $op) {
+                $ocupados[] = (int)$op;
+            }
+        }
+        return array_values(array_unique($ocupados));
+    }
+
     public function proximoId(): int
     {
         $filas = $this->leerCrudo();

@@ -55,8 +55,9 @@ if ($base !== '/' && $base !== '' && str_starts_with($ruta, $base)) {
 $ruta = '/' . trim($ruta, '/');   // normalizamos: siempre empieza con "/"
 
 // ---- Armamos los controladores ----
-$controller = new UsuarioController(new RepositorioUsuarios());
-$cuadrillaCtrl = new CuadrillaController(new RepositorioCuadrillas());
+$repoUsuarios = new RepositorioUsuarios();
+$controller = new UsuarioController($repoUsuarios);
+$cuadrillaCtrl = new CuadrillaController(new RepositorioCuadrillas(), $repoUsuarios);
 
 // ---- Ruteo: método + ruta -> acción ----
 switch ($metodo . ' ' . $ruta) {
@@ -88,8 +89,16 @@ switch ($metodo . ' ' . $ruta) {
         $cuadrillaCtrl->eliminar();
         break;
 
-    case 'POST /cuadrillas/operarios':
-        $cuadrillaCtrl->asignarOperarios();
+    case 'POST /cuadrillas/agregar-operario':
+        $cuadrillaCtrl->agregarOperario();
+        break;
+
+    case 'POST /cuadrillas/quitar-operario':
+        $cuadrillaCtrl->quitarOperario();
+        break;
+
+    case 'GET /operarios-libres':
+        $cuadrillaCtrl->operariosLibres();
         break;
 
     default:

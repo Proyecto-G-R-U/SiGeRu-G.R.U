@@ -6,7 +6,12 @@
     },
     {
         "id": 2,
-        "nombre": "Folota Sur",
+        "nombre": "Flota Sur",
         "zona": "Zona Sur"
+    },
+    {
+        "id": 3,
+        "nombre": "Flota Este",
+        "zona": "Zona Este"
     }
 ]

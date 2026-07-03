@@ -4,21 +4,27 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Models\RepositorioCuadrillas;
+use App\Models\RepositorioUsuarios;
 use App\Models\Cuadrilla;
 
 /**
  * CuadrillaController: gestión de cuadrillas (solo admin desde el frontend).
- *   listar()   -> GET  /cuadrillas
- *   crear()    -> POST /cuadrillas
- *   eliminar() -> POST /cuadrillas/eliminar
+ *   listar()          -> GET  /cuadrillas
+ *   crear()           -> POST /cuadrillas
+ *   eliminar()        -> POST /cuadrillas/eliminar
+ *   agregarOperario() -> POST /cuadrillas/agregar-operario
+ *   quitarOperario()  -> POST /cuadrillas/quitar-operario
+ *   operariosLibres() -> GET  /operarios-libres
  */
 class CuadrillaController
 {
     private RepositorioCuadrillas $repo;
+    private RepositorioUsuarios $repoUsuarios;
 
-    public function __construct(RepositorioCuadrillas $repo)
+    public function __construct(RepositorioCuadrillas $repo, RepositorioUsuarios $repoUsuarios)
     {
         $this->repo = $repo;
+        $this->repoUsuarios = $repoUsuarios;
     }
 
     public function listar(): void
@@ -58,22 +64,73 @@ class CuadrillaController
     }
 
     /**
-     * POST /cuadrillas/operarios — reemplaza la lista de operarios de una
-     * cuadrilla. Recibe { id, operarios: [ids] }.
+     * POST /cuadrillas/agregar-operario — agrega un operario de recolección a
+     * una cuadrilla. Verifica que sea operario de recolección. La exclusividad
+     * (quitarlo de otra cuadrilla) la garantiza el repositorio.
+     * Recibe { cuadrillaId, operarioId }.
      */
-    public function asignarOperarios(): void
+    public function agregarOperario(): void
     {
         $datos = $this->leerJson();
-        $id = (int)($datos['id'] ?? 0);
-        $operarios = is_array($datos['operarios'] ?? null) ? $datos['operarios'] : [];
+        $cuadrillaId = (int)($datos['cuadrillaId'] ?? 0);
+        $operarioId  = (int)($datos['operarioId'] ?? 0);
 
-        if ($id <= 0) {
-            $this->error('Falta el id de la cuadrilla.', 400);
+        if ($cuadrillaId <= 0 || $operarioId <= 0) {
+            $this->error('Faltan datos (cuadrillaId, operarioId).', 400);
         }
-        if (!$this->repo->actualizarOperarios($id, $operarios)) {
-            $this->error('No existe una cuadrilla con ese id.', 404);
+
+        // Verificamos que el usuario exista y sea operario DE RECOLECCIÓN.
+        $usuario = $this->repoUsuarios->buscarPorId($operarioId);
+        if ($usuario === null) {
+            $this->error('El operario no existe.', 404);
         }
-        $this->responder(['mensaje' => 'Integrantes actualizados.'], 200);
+        $esRecoleccion = method_exists($usuario, 'getEspecialidad')
+            && $usuario->getEspecialidad() === 'recoleccion';
+        if (!$esRecoleccion) {
+            $this->error('Solo los operarios de recolección pueden integrar cuadrillas.', 400);
+        }
+
+        if (!$this->repo->agregarOperario($cuadrillaId, $operarioId)) {
+            $this->error('No existe la cuadrilla.', 404);
+        }
+        $this->responder(['mensaje' => 'Operario agregado a la cuadrilla.'], 200);
+    }
+
+    /**
+     * POST /cuadrillas/quitar-operario — quita un operario de una cuadrilla.
+     * Recibe { cuadrillaId, operarioId }.
+     */
+    public function quitarOperario(): void
+    {
+        $datos = $this->leerJson();
+        $cuadrillaId = (int)($datos['cuadrillaId'] ?? 0);
+        $operarioId  = (int)($datos['operarioId'] ?? 0);
+
+        if ($cuadrillaId <= 0 || $operarioId <= 0) {
+            $this->error('Faltan datos (cuadrillaId, operarioId).', 400);
+        }
+        if (!$this->repo->quitarOperario($cuadrillaId, $operarioId)) {
+            $this->error('No existe la cuadrilla.', 404);
+        }
+        $this->responder(['mensaje' => 'Operario quitado de la cuadrilla.'], 200);
+    }
+
+    /**
+     * GET /operarios-libres — lista los operarios de recolección que NO están
+     * en ninguna cuadrilla (para el selector de "agregar operario").
+     */
+    public function operariosLibres(): void
+    {
+        $ocupados = $this->repo->operariosOcupados();
+        $libres = [];
+        foreach ($this->repoUsuarios->todos() as $u) {
+            $esRecoleccion = method_exists($u, 'getEspecialidad')
+                && $u->getEspecialidad() === 'recoleccion';
+            if ($esRecoleccion && !in_array($u->getId(), $ocupados, true)) {
+                $libres[] = $u;
+            }
+        }
+        $this->responder($libres, 200);
     }
 
     private function leerJson(): array

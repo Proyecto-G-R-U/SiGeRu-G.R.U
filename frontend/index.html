@@ -461,16 +461,16 @@
         const tbody = document.getElementById('tabla-cuadrillas');
         if (!tbody) return;
 
-        // Traemos usuarios para poder listar/seleccionar operarios.
+        // Traemos usuarios (para nombres) y operarios de recolección libres.
         try { cacheUsuarios = await (await fetch(API_USUARIOS + '/usuarios')).json(); } catch (e) { cacheUsuarios = []; }
-        // Solo los operarios pueden integrar cuadrillas.
-        const operarios = cacheUsuarios.filter(function (u) { return u.rol === 'operario'; });
+        let libres = [];
+        try { libres = await (await fetch(API_USUARIOS + '/operarios-libres')).json(); } catch (e) { libres = []; }
 
         try {
             const resp = await fetch(API_USUARIOS + '/cuadrillas');
             cacheCuadrillas = await resp.json();
 
-            // Si venimos de un click en camión, mostramos solo esa cuadrilla.
+            // Filtro: si venimos de un click en camión, mostramos solo esa cuadrilla.
             let lista = cacheCuadrillas;
             const aviso = document.getElementById('cuad-filtro-aviso');
             if (cuadrillaFiltrada !== null) {
@@ -481,19 +481,35 @@
             }
 
             tbody.innerHTML = lista.map(function (c) {
-                // Checkboxes de TODOS los operarios; marcados los que integran la cuadrilla.
                 const integrantes = c.operarios || [];
-                const checks = operarios.map(function (op) {
-                    const marcado = integrantes.indexOf(op.id) !== -1 ? ' checked' : '';
-                    const esp = op.especialidad ? ' (' + op.especialidad + ')' : '';
-                    return '<label class="op-check"><input type="checkbox" value="' + op.id + '"' + marcado +
-                        ' onchange="guardarIntegrantes(' + c.id + ')"> ' + op.nombre + esp + '</label>';
-                }).join('');
-                const bloqueChecks = '<div class="op-checks" id="checks-cuad-' + c.id + '">' +
-                    (operarios.length ? checks : '<span class="txt-muted">No hay operarios creados.</span>') + '</div>';
+
+                // Lista de integrantes actuales, cada uno con botón "Quitar".
+                let listaInt;
+                if (integrantes.length === 0) {
+                    listaInt = '<span class="txt-muted">Sin integrantes</span>';
+                } else {
+                    listaInt = '<div class="int-lista">' + integrantes.map(function (opId) {
+                        const u = cacheUsuarios.find(function (x) { return x.id === opId; });
+                        const nombre = u ? u.nombre : ('#' + opId);
+                        return '<span class="int-chip">' + nombre +
+                            '<button class="chip-x" title="Quitar" onclick="quitarOperario(' + c.id + ',' + opId + ')">&times;</button></span>';
+                    }).join('') + '</div>';
+                }
+
+                // Selector para agregar un operario libre + botón.
+                let agregar;
+                if (libres.length === 0) {
+                    agregar = '<span class="txt-muted int-nota">No hay operarios de recolección libres.</span>';
+                } else {
+                    const opts = libres.map(function (op) {
+                        return '<option value="' + op.id + '">' + op.nombre + '</option>';
+                    }).join('');
+                    agregar = '<div class="int-agregar"><select id="add-op-' + c.id + '">' + opts + '</select>' +
+                        '<button class="btn-mini" onclick="agregarOperario(' + c.id + ')">Agregar</button></div>';
+                }
 
                 return '<tr><td>' + c.id + '</td><td>' + c.nombre + '</td><td>' +
-                    (c.zona || '—') + '</td><td>' + bloqueChecks + '</td><td>' +
+                    (c.zona || '—') + '</td><td>' + listaInt + agregar + '</td><td>' +
                     '<button class="btn-eliminar" onclick="eliminarCuadrilla(' + c.id + ')">Eliminar</button>' +
                     '</td></tr>';
             }).join('');
@@ -507,22 +523,33 @@
         if (form) form.onsubmit = altaCuadrilla;
     }
 
-    // Junta los checkboxes marcados de una cuadrilla y los guarda en la API.
-    async function guardarIntegrantes(cuadrillaId) {
-        const cont = document.getElementById('checks-cuad-' + cuadrillaId);
-        if (!cont) return;
-        const marcados = Array.prototype.slice.call(cont.querySelectorAll('input:checked'))
-            .map(function (chk) { return parseInt(chk.value); });
+    // Agrega el operario seleccionado a la cuadrilla (queda libre de otras).
+    async function agregarOperario(cuadrillaId) {
+        const sel = document.getElementById('add-op-' + cuadrillaId);
+        const operarioId = sel ? sel.value : '';
+        if (!operarioId) { alert('Elegí un operario para agregar.'); return; }
         try {
-            await fetch(API_USUARIOS + '/cuadrillas/operarios', {
+            const resp = await fetch(API_USUARIOS + '/cuadrillas/agregar-operario', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: cuadrillaId, operarios: marcados }),
+                body: JSON.stringify({ cuadrillaId: cuadrillaId, operarioId: parseInt(operarioId) }),
             });
-            // Actualizamos el cache local para que otras vistas lo reflejen.
-            const c = cacheCuadrillas.find(function (x) { return x.id === cuadrillaId; });
-            if (c) c.operarios = marcados;
-        } catch (err) { alert('Error al guardar integrantes.'); }
+            if (resp.ok) cargarCuadrillas();
+            else { const r = await resp.json(); alert(r.error || 'No se pudo agregar.'); }
+        } catch (err) { alert('Error de conexión.'); }
+    }
+
+    // Quita un operario de la cuadrilla.
+    async function quitarOperario(cuadrillaId, operarioId) {
+        try {
+            const resp = await fetch(API_USUARIOS + '/cuadrillas/quitar-operario', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cuadrillaId: cuadrillaId, operarioId: operarioId }),
+            });
+            if (resp.ok) cargarCuadrillas();
+            else { const r = await resp.json(); alert(r.error || 'No se pudo quitar.'); }
+        } catch (err) { alert('Error de conexión.'); }
     }
 
     // Quita el filtro de cuadrilla y recarga la lista completa.
