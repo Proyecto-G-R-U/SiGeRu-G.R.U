@@ -82,13 +82,22 @@ class RepositorioUsuarios
 
     /**
      * Convierte una fila cruda (array del JSON) en el objeto Usuario correcto,
-     * según su rol. Esto rearma la herencia al leer del archivo.
+     * según su rol. Esto rearma la herencia al leer del archivo. Para los
+     * operarios, además elige la subclase según la especialidad guardada.
      */
     private function aObjeto(array $f): Usuario
     {
+        if ($f['rol'] === 'operario') {
+            $cuadrilla = $f['cuadrilla'] ?? null;
+            return match ($f['especialidad'] ?? 'recoleccion') {
+                'clasificacion' => new OperarioClasificacion($f['id'], $f['nombre'], $f['email'], $f['passwordHash'], $cuadrilla),
+                'vertedero'     => new OperarioVertedero($f['id'], $f['nombre'], $f['email'], $f['passwordHash'], $cuadrilla),
+                default         => new OperarioRecoleccion($f['id'], $f['nombre'], $f['email'], $f['passwordHash'], $cuadrilla),
+            };
+        }
+
         return match ($f['rol']) {
             'administrador' => new Administrador($f['id'], $f['nombre'], $f['email'], $f['passwordHash']),
-            'operario'      => new Operario($f['id'], $f['nombre'], $f['email'], $f['passwordHash'], $f['especialidad'] ?? 'recoleccion', $f['cuadrilla'] ?? null),
             default         => new Vecino($f['id'], $f['nombre'], $f['email'], $f['passwordHash']),
         };
     }

@@ -3,395 +3,460 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SiGeRU — Panel</title>
+    <title>G.R.U — Panel</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
     <link rel="stylesheet" href="css/estilos.css">
 </head>
 <body>
 
-    <!--
-      PANEL PRINCIPAL.
-      Dos pantallas en un mismo archivo (login y panel), que se muestran/ocultan
-      con la clase .oculto. Todo el JavaScript va embebido al final, sin .js
-      externos. Consume las 3 APIs por fetch usando rutas relativas (../api-...).
-    -->
-
-    <!-- ===== PANTALLA 1: LOGIN ===== -->
-    <div class="landing" id="pantalla-login">
-        <div class="card">
-            <h1>SiGeRU</h1>
-            <p class="subt">Iniciar sesión</p>
-            <p class="desc">Accedé con tu cuenta de personal o de vecino.</p>
-
-            <form id="form-login">
-                <label for="login-email">Email</label>
-                <input type="email" id="login-email" required>
-
-                <label for="login-password">Contraseña</label>
-                <input type="password" id="login-password" required>
-
-                <button type="submit" class="btn">Ingresar</button>
-            </form>
-
-            <p class="msg" id="login-msg"></p>
-
-            <a class="link" href="registro.html">¿No tenés cuenta? Registrate como vecino</a>
-        </div>
+<!-- ============================================================
+     PANTALLA 1: LOGIN (se muestra al entrar, sin sesión)
+     ============================================================ -->
+<div class="login-screen" id="pantalla-login">
+    <div class="login-card">
+        <h1>G.R.U</h1>
+        <p class="login-sub">Gestión de Residuos Urbanos</p>
+        <p class="login-desc">Ingresá con tu cuenta para acceder al sistema.</p>
+        <form id="form-login">
+            <label for="login-email">Email</label>
+            <input type="email" id="login-email" required>
+            <label for="login-password">Contraseña</label>
+            <input type="password" id="login-password" required>
+            <button type="submit" class="btn">Ingresar</button>
+        </form>
+        <p class="msg" id="login-msg"></p>
+        <a class="link" href="registro.html">¿No tenés cuenta? Registrate como vecino</a>
     </div>
+</div>
 
-    <!-- ===== PANTALLA 2: PANEL (oculta hasta iniciar sesión) ===== -->
-    <div id="pantalla-panel" class="oculto">
-        <div class="topbar">
-            <h2>SiGeRU — Panel</h2>
-            <div>
-                <span class="user" id="panel-user"></span>
-                <button class="btn-salir" onclick="cerrarSesion()">Cerrar sesión</button>
-            </div>
+<!-- ============================================================
+     PANTALLA 2: APP (sidebar + header + contenido)
+     Oculta hasta iniciar sesión. El color lo pone la clase de rol
+     en <body> (tema-vecino, tema-admin, etc.) vía JavaScript.
+     ============================================================ -->
+<div class="app oculto" id="pantalla-app">
+
+    <!-- SIDEBAR (color según rol) -->
+    <aside class="sidebar">
+        <div class="logo">
+            <h1>G.R.U</h1>
+            <p>Gestión de Residuos Urbanos</p>
         </div>
+        <nav class="nav" id="nav-menu">
+            <!-- El menú se arma por JS según el rol -->
+        </nav>
+    </aside>
 
-        <div class="contenido">
-            <div class="tabs">
-                <button class="tab activa" onclick="mostrar('usuarios', this)">Usuarios</button>
-                <button class="tab" onclick="mostrar('contenedores', this)">Contenedores</button>
-                <button class="tab" onclick="mostrar('camiones', this)">Camiones</button>
+    <!-- ZONA DERECHA: header + contenido -->
+    <div class="main">
+        <header class="header">
+            <span class="header-title" id="header-title">Panel</span>
+            <div class="header-right">
+                <span class="header-name" id="header-name"></span>
+                <span class="badge" id="header-badge"></span>
+                <button class="btn-salir" onclick="cerrarSesion()">
+                    <span class="material-icons-outlined">logout</span> Cerrar Sesión
+                </button>
             </div>
+        </header>
 
-            <!-- ===== USUARIOS ===== -->
-            <div id="sec-usuarios">
-                <div class="panel">
-                    <h3>Nuevo usuario</h3>
-                    <form id="form-usuario" class="form-inline">
-                        <div><label>Nombre</label><input type="text" id="u-nombre" required></div>
-                        <div><label>Email</label><input type="email" id="u-email" required></div>
-                        <div><label>Contraseña</label><input type="password" id="u-password" required></div>
-                        <div>
-                            <label>Rol</label>
-                            <select id="u-rol">
-                                <option value="vecino">Vecino</option>
-                                <option value="operario">Operario</option>
-                                <option value="administrador">Administrador</option>
-                            </select>
-                        </div>
-                        <div class="full"><button type="submit" class="btn">Agregar usuario</button></div>
-                    </form>
-                    <p class="msg" id="u-msg"></p>
-                </div>
-                <table class="tabla">
-                    <thead><tr><th>ID</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Acción</th></tr></thead>
-                    <tbody id="tabla-usuarios"></tbody>
-                </table>
-            </div>
-
-            <!-- ===== CONTENEDORES ===== -->
-            <div id="sec-contenedores" class="oculto">
-                <div class="panel">
-                    <h3>Nuevo contenedor</h3>
-                    <form id="form-contenedor" class="form-inline">
-                        <div><label>Código</label><input type="text" id="c-codigo" required></div>
-                        <div><label>Ubicación</label><input type="text" id="c-ubicacion" required></div>
-                        <div>
-                            <label>Tipo de residuo</label>
-                            <select id="c-tipo">
-                                <option value="mezclado">Mezclado</option>
-                                <option value="reciclable">Reciclable</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label>Estado</label>
-                            <select id="c-estado">
-                                <option value="operativo">Operativo</option>
-                                <option value="roto">Roto</option>
-                                <option value="desbordado">Desbordado</option>
-                            </select>
-                        </div>
-                        <div class="full"><button type="submit" class="btn">Agregar contenedor</button></div>
-                    </form>
-                    <p class="msg" id="c-msg"></p>
-                </div>
-                <table class="tabla">
-                    <thead><tr><th>ID</th><th>Código</th><th>Ubicación</th><th>Tipo</th><th>Estado</th></tr></thead>
-                    <tbody id="tabla-contenedores"></tbody>
-                </table>
-            </div>
-
-            <!-- ===== CAMIONES ===== -->
-            <div id="sec-camiones" class="oculto">
-                <div class="panel">
-                    <h3>Nuevo camión</h3>
-                    <form id="form-camion" class="form-inline">
-                        <div><label>Patente</label><input type="text" id="k-patente" required></div>
-                        <div><label>Modelo</label><input type="text" id="k-modelo" required></div>
-                        <div>
-                            <label>Estado</label>
-                            <select id="k-estado">
-                                <option value="operativo">Operativo</option>
-                                <option value="mantenimiento">Mantenimiento</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label>Disponibilidad</label>
-                            <select id="k-disp">
-                                <option value="disponible">Disponible</option>
-                                <option value="en_ruta">En ruta</option>
-                            </select>
-                        </div>
-                        <div class="full"><button type="submit" class="btn">Agregar camión</button></div>
-                    </form>
-                    <p class="msg" id="k-msg"></p>
-                </div>
-                <table class="tabla">
-                    <thead><tr><th>ID</th><th>Patente</th><th>Modelo</th><th>Estado</th><th>Disponibilidad</th></tr></thead>
-                    <tbody id="tabla-camiones"></tbody>
-                </table>
-            </div>
-
-        </div>
+        <main class="content" id="content">
+            <!-- El contenido se arma por JS según el rol -->
+        </main>
     </div>
+</div>
 
-    <!-- ====== JAVASCRIPT EMBEBIDO (sin archivos .js externos) ====== -->
-    <script>
-        // Rutas relativas a cada API. El frontend está en /sigeru/frontend/,
-        // así que subimos un nivel (..) para llegar a las carpetas de las APIs.
-        // Apache + .htaccess resuelven la ruta interna hacia api.php.
-        const API_USUARIOS    = '../api-usuarios';
-        const API_GESTION     = '../api-gestion';
-        const API_RECOLECCION = '../api-recoleccion';
+<!-- ============================================================
+     JAVASCRIPT EMBEBIDO
+     ============================================================ -->
+<script>
+    const API_USUARIOS    = '../api-usuarios';
+    const API_GESTION     = '../api-gestion';
+    const API_RECOLECCION = '../api-recoleccion';
 
-        // Guardamos el usuario que inició sesión. Sirve para saber si es
-        // administrador (y entonces mostrar el botón de eliminar) y para
-        // enviar su email al backend cuando pide un borrado.
-        let usuarioActual = null;
+    // Usuario logueado (para saber su rol/especialidad y su email).
+    let usuarioActual = null;
 
-        // ---------- LOGIN ----------
-        const formLogin = document.getElementById('form-login');
-        const loginMsg  = document.getElementById('login-msg');
+    // -------------------------------------------------------------
+    // CONFIGURACIÓN DE CADA ROL: color (clase de tema), título del
+    // panel, texto del badge y el "tipo" con el que decidimos la vista.
+    // El rol efectivo de un operario se arma como 'operario_<especialidad>'.
+    // -------------------------------------------------------------
+    const ROLES = {
+        vecino:                 { tema: 'tema-vecino',        titulo: 'Panel Informativo Vecinal', badge: 'Público' },
+        administrador:          { tema: 'tema-admin',         titulo: 'Panel Administrativo',       badge: 'Admin Municipal' },
+        operario_recoleccion:   { tema: 'tema-recoleccion',   titulo: 'Panel de Recolección',       badge: 'Op. Recolección' },
+        operario_clasificacion: { tema: 'tema-clasificacion', titulo: 'Panel de Clasificación',     badge: 'Op. Clasificación' },
+        operario_vertedero:     { tema: 'tema-vertedero',     titulo: 'Panel de Vertedero',         badge: 'Op. Vertedero' },
+    };
 
-        formLogin.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            loginMsg.textContent = '';
-            loginMsg.className = 'msg';
+    // Devuelve el rol efectivo de un usuario (distingue los 3 operarios).
+    function rolEfectivo(u) {
+        if (u.rol === 'operario') {
+            return 'operario_' + (u.especialidad || 'recoleccion');
+        }
+        return u.rol;
+    }
 
-            const datos = {
-                email:    document.getElementById('login-email').value.trim(),
-                password: document.getElementById('login-password').value,
-            };
+    // -------------------------------------------------------------
+    // LOGIN
+    // -------------------------------------------------------------
+    const formLogin = document.getElementById('form-login');
+    const loginMsg  = document.getElementById('login-msg');
 
-            try {
-                const resp = await fetch(API_USUARIOS + '/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(datos),
-                });
-                const resultado = await resp.json();
-                if (resp.ok) {
-                    entrarAlPanel(resultado.usuario);
-                } else {
-                    loginMsg.textContent = resultado.error || 'No se pudo iniciar sesión.';
-                    loginMsg.classList.add('err');
-                }
-            } catch (err) {
-                loginMsg.textContent = 'No se pudo conectar con la API de Usuarios.';
+    formLogin.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        loginMsg.textContent = '';
+        loginMsg.className = 'msg';
+        const datos = {
+            email:    document.getElementById('login-email').value.trim(),
+            password: document.getElementById('login-password').value,
+        };
+        try {
+            const resp = await fetch(API_USUARIOS + '/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos),
+            });
+            const resultado = await resp.json();
+            if (resp.ok) {
+                entrarAlPanel(resultado.usuario);
+            } else {
+                loginMsg.textContent = resultado.error || 'No se pudo iniciar sesión.';
                 loginMsg.classList.add('err');
             }
-        });
+        } catch (err) {
+            loginMsg.textContent = 'No se pudo conectar con la API de Usuarios.';
+            loginMsg.classList.add('err');
+        }
+    });
 
-        function entrarAlPanel(usuario) {
-            usuarioActual = usuario;
-            document.getElementById('pantalla-login').classList.add('oculto');
-            document.getElementById('pantalla-panel').classList.remove('oculto');
-            document.getElementById('panel-user').textContent =
-                usuario.nombre + ' (' + usuario.rol + ')';
-            cargarUsuarios();
-            cargarContenedores();
-            cargarCamiones();
+    function entrarAlPanel(usuario) {
+        usuarioActual = usuario;
+        const rol = rolEfectivo(usuario);
+        const cfg = ROLES[rol] || ROLES.vecino;
+
+        // Aplicar el color del tema en el body.
+        document.body.className = cfg.tema;
+
+        // Header
+        document.getElementById('header-title').textContent = cfg.titulo;
+        document.getElementById('header-name').textContent = usuario.nombre;
+        document.getElementById('header-badge').textContent = cfg.badge;
+
+        // Mostrar la app, ocultar login
+        document.getElementById('pantalla-login').classList.add('oculto');
+        document.getElementById('pantalla-app').classList.remove('oculto');
+
+        // Armar menú y contenido según el rol
+        construirMenu(rol);
+        // Por defecto mostramos "Inicio"
+        mostrarSeccion('inicio');
+    }
+
+    function cerrarSesion() {
+        usuarioActual = null;
+        document.body.className = '';
+        document.getElementById('pantalla-app').classList.add('oculto');
+        document.getElementById('pantalla-login').classList.remove('oculto');
+        formLogin.reset();
+        loginMsg.textContent = '';
+    }
+
+    // -------------------------------------------------------------
+    // MENÚ LATERAL según el rol
+    // Solo el administrador tiene secciones de gestión. El resto solo "Inicio".
+    // -------------------------------------------------------------
+    function construirMenu(rol) {
+        const nav = document.getElementById('nav-menu');
+        let items = [{ id: 'inicio', icono: 'home', texto: 'Inicio' }];
+
+        if (rol === 'administrador') {
+            items.push(
+                { id: 'usuarios',     icono: 'group',          texto: 'Usuarios' },
+                { id: 'contenedores', icono: 'delete',         texto: 'Contenedores' },
+                { id: 'camiones',     icono: 'local_shipping', texto: 'Camiones' },
+            );
         }
 
-        function cerrarSesion() {
-            usuarioActual = null;
-            document.getElementById('pantalla-panel').classList.add('oculto');
-            document.getElementById('pantalla-login').classList.remove('oculto');
-            formLogin.reset();
-            loginMsg.textContent = '';
+        nav.innerHTML = items.map(function (it, i) {
+            return '<a class="nav-item' + (i === 0 ? ' activo' : '') + '" ' +
+                'id="nav-' + it.id + '" onclick="mostrarSeccion(\'' + it.id + '\')">' +
+                '<span class="material-icons-outlined">' + it.icono + '</span> ' + it.texto + '</a>';
+        }).join('');
+    }
+
+    // -------------------------------------------------------------
+    // CAMBIO DE SECCIÓN
+    // -------------------------------------------------------------
+    function mostrarSeccion(id) {
+        // marcar activo en el menú
+        document.querySelectorAll('.nav-item').forEach(function (a) { a.classList.remove('activo'); });
+        const navEl = document.getElementById('nav-' + id);
+        if (navEl) navEl.classList.add('activo');
+
+        const content = document.getElementById('content');
+
+        if (id === 'inicio') {
+            // Los no-administradores ven su panel vacío (solo bienvenida),
+            // porque por ahora solo el admin tiene funciones.
+            content.innerHTML = '<div class="bienvenida"><h2>Hola, ' +
+                usuarioActual.nombre + '</h2><p>Bienvenido a tu panel. ' +
+                (rolEfectivo(usuarioActual) === 'administrador'
+                    ? 'Usá el menú lateral para gestionar usuarios, contenedores y camiones.'
+                    : 'Por el momento este panel es informativo.') +
+                '</p></div>';
+            return;
         }
 
-        // ---------- NAVEGACIÓN DE PESTAÑAS ----------
-        function mostrar(seccion, boton) {
-            ['usuarios', 'contenedores', 'camiones'].forEach(function (s) {
-                document.getElementById('sec-' + s).classList.add('oculto');
+        // Secciones de administrador
+        if (id === 'usuarios')     { content.innerHTML = plantillaUsuarios();     cargarUsuarios(); }
+        if (id === 'contenedores') { content.innerHTML = plantillaContenedores(); cargarContenedores(); }
+        if (id === 'camiones')     { content.innerHTML = plantillaCamiones();     cargarCamiones(); }
+    }
+
+    // =============================================================
+    //  PLANTILLAS DE SECCIÓN (solo admin)
+    // =============================================================
+    function plantillaUsuarios() {
+        return ''
+        + '<div class="panel"><h3>Nuevo usuario</h3>'
+        + '<form id="form-usuario" class="form-inline">'
+        + '<div><label>Nombre</label><input type="text" id="u-nombre" required></div>'
+        + '<div><label>Email</label><input type="email" id="u-email" required></div>'
+        + '<div><label>Contraseña</label><input type="password" id="u-password" required></div>'
+        + '<div><label>Rol</label><select id="u-rol" onchange="toggleEspecialidad()">'
+        + '<option value="vecino">Vecino</option>'
+        + '<option value="operario">Operario</option>'
+        + '<option value="administrador">Administrador</option></select></div>'
+        + '<div id="wrap-especialidad" style="display:none;"><label>Especialidad</label>'
+        + '<select id="u-especialidad">'
+        + '<option value="recoleccion">Recolección</option>'
+        + '<option value="clasificacion">Clasificación</option>'
+        + '<option value="vertedero">Vertedero</option></select></div>'
+        + '<div class="full"><button type="submit" class="btn">Agregar usuario</button></div>'
+        + '</form><p class="msg" id="u-msg"></p></div>'
+        + '<table class="tabla"><thead><tr><th>ID</th><th>Nombre</th><th>Email</th>'
+        + '<th>Rol</th><th>Acción</th></tr></thead><tbody id="tabla-usuarios"></tbody></table>';
+    }
+
+    function plantillaContenedores() {
+        return ''
+        + '<div class="panel"><h3>Nuevo contenedor</h3>'
+        + '<form id="form-contenedor" class="form-inline">'
+        + '<div><label>Código</label><input type="text" id="c-codigo" required></div>'
+        + '<div><label>Ubicación</label><input type="text" id="c-ubicacion" required></div>'
+        + '<div><label>Tipo de residuo</label><select id="c-tipo">'
+        + '<option value="mezclado">Mezclado</option>'
+        + '<option value="reciclable">Reciclable</option></select></div>'
+        + '<div><label>Estado</label><select id="c-estado">'
+        + '<option value="operativo">Operativo</option>'
+        + '<option value="roto">Roto</option>'
+        + '<option value="desbordado">Desbordado</option></select></div>'
+        + '<div class="full"><button type="submit" class="btn">Agregar contenedor</button></div>'
+        + '</form><p class="msg" id="c-msg"></p></div>'
+        + '<table class="tabla"><thead><tr><th>ID</th><th>Código</th><th>Ubicación</th>'
+        + '<th>Tipo</th><th>Estado</th></tr></thead><tbody id="tabla-contenedores"></tbody></table>';
+    }
+
+    function plantillaCamiones() {
+        return ''
+        + '<div class="panel"><h3>Nuevo camión</h3>'
+        + '<form id="form-camion" class="form-inline">'
+        + '<div><label>Patente</label><input type="text" id="k-patente" required></div>'
+        + '<div><label>Modelo</label><input type="text" id="k-modelo" required></div>'
+        + '<div><label>Estado</label><select id="k-estado">'
+        + '<option value="operativo">Operativo</option>'
+        + '<option value="mantenimiento">Mantenimiento</option></select></div>'
+        + '<div><label>Disponibilidad</label><select id="k-disp">'
+        + '<option value="disponible">Disponible</option>'
+        + '<option value="en_ruta">En ruta</option></select></div>'
+        + '<div class="full"><button type="submit" class="btn">Agregar camión</button></div>'
+        + '</form><p class="msg" id="k-msg"></p></div>'
+        + '<table class="tabla"><thead><tr><th>ID</th><th>Patente</th><th>Modelo</th>'
+        + '<th>Estado</th><th>Disponibilidad</th></tr></thead><tbody id="tabla-camiones"></tbody></table>';
+    }
+
+    // Muestra/oculta el selector de especialidad según el rol elegido.
+    function toggleEspecialidad() {
+        const rol = document.getElementById('u-rol').value;
+        document.getElementById('wrap-especialidad').style.display =
+            (rol === 'operario') ? 'block' : 'none';
+    }
+
+    // =============================================================
+    //  USUARIOS (listado + alta + eliminar)
+    // =============================================================
+    async function cargarUsuarios() {
+        const tbody = document.getElementById('tabla-usuarios');
+        const esAdmin = usuarioActual && usuarioActual.rol === 'administrador';
+        try {
+            const resp = await fetch(API_USUARIOS + '/usuarios');
+            const usuarios = await resp.json();
+            tbody.innerHTML = usuarios.map(function (u) {
+                let accion = '—';
+                if (esAdmin && u.id !== usuarioActual.id) {
+                    accion = '<button class="btn-eliminar" onclick="eliminarUsuario(' +
+                        u.id + ", '" + u.nombre.replace(/'/g, "\\'") + "')" + '">Eliminar</button>';
+                }
+                // Mostramos rol + especialidad si es operario
+                let rolTxt = u.rol;
+                if (u.rol === 'operario' && u.especialidad) rolTxt += ' · ' + u.especialidad;
+                return '<tr><td>' + u.id + '</td><td>' + u.nombre + '</td><td>' +
+                    u.email + '</td><td>' + rolTxt + '</td><td>' + accion + '</td></tr>';
+            }).join('');
+        } catch (err) {
+            tbody.innerHTML = '<tr><td colspan="5">Error al conectar con API Usuarios.</td></tr>';
+        }
+
+        // Enganchamos el form de alta (se recreó con la plantilla)
+        const form = document.getElementById('form-usuario');
+        if (form) form.onsubmit = altaUsuario;
+    }
+
+    async function altaUsuario(e) {
+        e.preventDefault();
+        const msg = document.getElementById('u-msg');
+        msg.className = 'msg';
+        const rol = document.getElementById('u-rol').value;
+        const datos = {
+            nombre:   document.getElementById('u-nombre').value.trim(),
+            email:    document.getElementById('u-email').value.trim(),
+            password: document.getElementById('u-password').value,
+            rol:      rol,
+        };
+        if (rol === 'operario') {
+            datos.especialidad = document.getElementById('u-especialidad').value;
+        }
+        try {
+            const resp = await fetch(API_USUARIOS + '/usuarios', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos),
             });
-            document.getElementById('sec-' + seccion).classList.remove('oculto');
-            document.querySelectorAll('.tab').forEach(function (t) {
-                t.classList.remove('activa');
+            const resultado = await resp.json();
+            if (resp.ok) {
+                msg.textContent = 'Usuario agregado.'; msg.classList.add('ok');
+                e.target.reset();
+                toggleEspecialidad();
+                cargarUsuarios();
+            } else {
+                msg.textContent = resultado.error; msg.classList.add('err');
+            }
+        } catch (err) {
+            msg.textContent = 'Error de conexión.'; msg.classList.add('err');
+        }
+    }
+
+    async function eliminarUsuario(id, nombre) {
+        if (!confirm('¿Seguro que querés eliminar a "' + nombre + '"?')) return;
+        try {
+            const resp = await fetch(API_USUARIOS + '/usuarios/eliminar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id, adminEmail: usuarioActual.email }),
             });
-            boton.classList.add('activa');
+            const resultado = await resp.json();
+            if (resp.ok) { cargarUsuarios(); }
+            else { alert(resultado.error || 'No se pudo eliminar.'); }
+        } catch (err) {
+            alert('Error de conexión al eliminar.');
         }
+    }
 
-        // ---------- USUARIOS ----------
-        async function cargarUsuarios() {
-            const tbody = document.getElementById('tabla-usuarios');
-            // ¿El logueado es administrador? Solo entonces mostramos "Eliminar".
-            const esAdmin = usuarioActual && usuarioActual.rol === 'administrador';
-            try {
-                const resp = await fetch(API_USUARIOS + '/usuarios');
-                const usuarios = await resp.json();
-                tbody.innerHTML = usuarios.map(function (u) {
-                    // Botón eliminar: solo si soy admin y la fila no soy yo mismo.
-                    let accion = '—';
-                    if (esAdmin && u.id !== usuarioActual.id) {
-                        accion = '<button class="btn-eliminar" onclick="eliminarUsuario(' +
-                            u.id + ", '" + u.nombre.replace(/'/g, "\\'") + "')" +
-                            '">Eliminar</button>';
-                    }
-                    return '<tr><td>' + u.id + '</td><td>' + u.nombre + '</td><td>' +
-                        u.email + '</td><td>' + u.rol +
-                        (u.especialidad ? ' · ' + u.especialidad : '') + '</td><td>' +
-                        accion + '</td></tr>';
-                }).join('');
-            } catch (err) {
-                tbody.innerHTML = '<tr><td colspan="5">Error al conectar con API Usuarios.</td></tr>';
-            }
+    // =============================================================
+    //  CONTENEDORES
+    // =============================================================
+    async function cargarContenedores() {
+        const tbody = document.getElementById('tabla-contenedores');
+        try {
+            const resp = await fetch(API_GESTION + '/contenedores');
+            const lista = await resp.json();
+            tbody.innerHTML = lista.map(function (c) {
+                return '<tr><td>' + c.id + '</td><td>' + c.codigo + '</td><td>' +
+                    c.ubicacion + '</td><td>' + c.tipoResiduo + '</td><td>' + c.estado + '</td></tr>';
+            }).join('');
+        } catch (err) {
+            tbody.innerHTML = '<tr><td colspan="5">Error al conectar con API Gestión.</td></tr>';
         }
+        const form = document.getElementById('form-contenedor');
+        if (form) form.onsubmit = altaContenedor;
+    }
 
-        // Elimina un usuario (solo admins). Pide confirmación y manda el email
-        // del admin logueado para que el backend verifique el permiso.
-        async function eliminarUsuario(id, nombre) {
-            if (!confirm('¿Seguro que querés eliminar a "' + nombre + '"?')) {
-                return;
+    async function altaContenedor(e) {
+        e.preventDefault();
+        const msg = document.getElementById('c-msg');
+        msg.className = 'msg';
+        const datos = {
+            codigo:      document.getElementById('c-codigo').value.trim(),
+            ubicacion:   document.getElementById('c-ubicacion').value.trim(),
+            tipoResiduo: document.getElementById('c-tipo').value,
+            estado:      document.getElementById('c-estado').value,
+        };
+        try {
+            const resp = await fetch(API_GESTION + '/contenedores', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos),
+            });
+            const resultado = await resp.json();
+            if (resp.ok) {
+                msg.textContent = 'Contenedor agregado.'; msg.classList.add('ok');
+                e.target.reset(); cargarContenedores();
+            } else {
+                msg.textContent = resultado.error; msg.classList.add('err');
             }
-            try {
-                const resp = await fetch(API_USUARIOS + '/usuarios/eliminar', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: id, adminEmail: usuarioActual.email }),
-                });
-                const resultado = await resp.json();
-                if (resp.ok) {
-                    cargarUsuarios(); // recargamos la tabla sin el borrado
-                } else {
-                    alert(resultado.error || 'No se pudo eliminar.');
-                }
-            } catch (err) {
-                alert('Error de conexión al eliminar.');
-            }
+        } catch (err) {
+            msg.textContent = 'Error de conexión.'; msg.classList.add('err');
         }
+    }
 
-        document.getElementById('form-usuario').addEventListener('submit', async function (e) {
-            e.preventDefault();
-            const msg = document.getElementById('u-msg');
-            msg.className = 'msg';
-            const datos = {
-                nombre:   document.getElementById('u-nombre').value.trim(),
-                email:    document.getElementById('u-email').value.trim(),
-                password: document.getElementById('u-password').value,
-                rol:      document.getElementById('u-rol').value,
-            };
-            try {
-                const resp = await fetch(API_USUARIOS + '/usuarios', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(datos),
-                });
-                const resultado = await resp.json();
-                if (resp.ok) {
-                    msg.textContent = 'Usuario agregado.'; msg.classList.add('ok');
-                    e.target.reset();
-                    cargarUsuarios();
-                } else {
-                    msg.textContent = resultado.error; msg.classList.add('err');
-                }
-            } catch (err) {
-                msg.textContent = 'Error de conexión.'; msg.classList.add('err');
-            }
-        });
-
-        // ---------- CONTENEDORES ----------
-        async function cargarContenedores() {
-            const tbody = document.getElementById('tabla-contenedores');
-            try {
-                const resp = await fetch(API_GESTION + '/contenedores');
-                const lista = await resp.json();
-                tbody.innerHTML = lista.map(function (c) {
-                    return '<tr><td>' + c.id + '</td><td>' + c.codigo + '</td><td>' +
-                        c.ubicacion + '</td><td>' + c.tipoResiduo + '</td><td>' +
-                        c.estado + '</td></tr>';
-                }).join('');
-            } catch (err) {
-                tbody.innerHTML = '<tr><td colspan="5">Error al conectar con API Gestión.</td></tr>';
-            }
+    // =============================================================
+    //  CAMIONES
+    // =============================================================
+    async function cargarCamiones() {
+        const tbody = document.getElementById('tabla-camiones');
+        try {
+            const resp = await fetch(API_RECOLECCION + '/camiones');
+            const lista = await resp.json();
+            tbody.innerHTML = lista.map(function (k) {
+                return '<tr><td>' + k.id + '</td><td>' + k.patente + '</td><td>' +
+                    k.modelo + '</td><td>' + k.estado + '</td><td>' + k.disponibilidad + '</td></tr>';
+            }).join('');
+        } catch (err) {
+            tbody.innerHTML = '<tr><td colspan="5">Error al conectar con API Recolección.</td></tr>';
         }
+        const form = document.getElementById('form-camion');
+        if (form) form.onsubmit = altaCamion;
+    }
 
-        document.getElementById('form-contenedor').addEventListener('submit', async function (e) {
-            e.preventDefault();
-            const msg = document.getElementById('c-msg');
-            msg.className = 'msg';
-            const datos = {
-                codigo:      document.getElementById('c-codigo').value.trim(),
-                ubicacion:   document.getElementById('c-ubicacion').value.trim(),
-                tipoResiduo: document.getElementById('c-tipo').value,
-                estado:      document.getElementById('c-estado').value,
-            };
-            try {
-                const resp = await fetch(API_GESTION + '/contenedores', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(datos),
-                });
-                const resultado = await resp.json();
-                if (resp.ok) {
-                    msg.textContent = 'Contenedor agregado.'; msg.classList.add('ok');
-                    e.target.reset();
-                    cargarContenedores();
-                } else {
-                    msg.textContent = resultado.error; msg.classList.add('err');
-                }
-            } catch (err) {
-                msg.textContent = 'Error de conexión.'; msg.classList.add('err');
+    async function altaCamion(e) {
+        e.preventDefault();
+        const msg = document.getElementById('k-msg');
+        msg.className = 'msg';
+        const datos = {
+            patente:        document.getElementById('k-patente').value.trim(),
+            modelo:         document.getElementById('k-modelo').value.trim(),
+            estado:         document.getElementById('k-estado').value,
+            disponibilidad: document.getElementById('k-disp').value,
+        };
+        try {
+            const resp = await fetch(API_RECOLECCION + '/camiones', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos),
+            });
+            const resultado = await resp.json();
+            if (resp.ok) {
+                msg.textContent = 'Camión agregado.'; msg.classList.add('ok');
+                e.target.reset(); cargarCamiones();
+            } else {
+                msg.textContent = resultado.error; msg.classList.add('err');
             }
-        });
-
-        // ---------- CAMIONES ----------
-        async function cargarCamiones() {
-            const tbody = document.getElementById('tabla-camiones');
-            try {
-                const resp = await fetch(API_RECOLECCION + '/camiones');
-                const lista = await resp.json();
-                tbody.innerHTML = lista.map(function (k) {
-                    return '<tr><td>' + k.id + '</td><td>' + k.patente + '</td><td>' +
-                        k.modelo + '</td><td>' + k.estado + '</td><td>' +
-                        k.disponibilidad + '</td></tr>';
-                }).join('');
-            } catch (err) {
-                tbody.innerHTML = '<tr><td colspan="5">Error al conectar con API Recolección.</td></tr>';
-            }
+        } catch (err) {
+            msg.textContent = 'Error de conexión.'; msg.classList.add('err');
         }
-
-        document.getElementById('form-camion').addEventListener('submit', async function (e) {
-            e.preventDefault();
-            const msg = document.getElementById('k-msg');
-            msg.className = 'msg';
-            const datos = {
-                patente:        document.getElementById('k-patente').value.trim(),
-                modelo:         document.getElementById('k-modelo').value.trim(),
-                estado:         document.getElementById('k-estado').value,
-                disponibilidad: document.getElementById('k-disp').value,
-            };
-            try {
-                const resp = await fetch(API_RECOLECCION + '/camiones', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(datos),
-                });
-                const resultado = await resp.json();
-                if (resp.ok) {
-                    msg.textContent = 'Camión agregado.'; msg.classList.add('ok');
-                    e.target.reset();
-                    cargarCamiones();
-                } else {
-                    msg.textContent = resultado.error; msg.classList.add('err');
-                }
-            } catch (err) {
-                msg.textContent = 'Error de conexión.'; msg.classList.add('err');
-            }
-        });
-    </script>
+    }
+</script>
 </body>
 </html>

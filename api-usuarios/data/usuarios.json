@@ -3,18 +3,45 @@
         "id": 1,
         "nombre": "Carlos Rodríguez",
         "email": "admin@sigeru.uy",
-        "passwordHash": "$2y$10$9QVmo5R8JrqDFq7kl.OwIOvBqfY9S3e8iZozfol0etb8jxv\/ASoQe",
+        "passwordHash": "$2y$10$sdq0KvwhArpHNMyDMjzyEObd4AlPNGKZT1skec\/9kVERtMfCbAlpu",
         "rol": "administrador",
         "especialidad": null,
         "cuadrilla": null
     },
     {
         "id": 2,
-        "nombre": "Facundo",
+        "nombre": "Facundo Oramas",
         "email": "oramasfacu@gmail.com",
-        "passwordHash": "$2y$10$PtLSwaRUfeW0CR0II6APt.NGPC\/M3gLCeii7pOB9Jqz9DGMp4N0Ma",
+        "passwordHash": "$2y$10$rlNr85vxEwkzdncLENIb4.EIWr6BtyuEYYiFbve4VFUN3R\/I.AF6i",
         "rol": "vecino",
         "especialidad": null,
+        "cuadrilla": null
+    },
+    {
+        "id": 3,
+        "nombre": "Facundo",
+        "email": "1@gmail.com",
+        "passwordHash": "$2y$10$tSrzhiKihacIO8NXIplaueb\/ZIaUvTqRgSBnsdVqNCGOok\/xA7xrO",
+        "rol": "operario",
+        "especialidad": "recoleccion",
+        "cuadrilla": null
+    },
+    {
+        "id": 4,
+        "nombre": "Facundo",
+        "email": "2@gmail.com",
+        "passwordHash": "$2y$10$HupOOFMWETA2m5mmc.TOkOpE35ydYLo\/s1URWbHw2.q8dD1Jz4.2i",
+        "rol": "operario",
+        "especialidad": "clasificacion",
+        "cuadrilla": null
+    },
+    {
+        "id": 5,
+        "nombre": "Facundo",
+        "email": "3@gmail.com",
+        "passwordHash": "$2y$10$KGPpZ0kD\/TBDL8upEL9x\/OyXelKkjEamBb0j6xCjBooOM0Bk2f4t6",
+        "rol": "operario",
+        "especialidad": "vertedero",
         "cuadrilla": null
     }
 ]

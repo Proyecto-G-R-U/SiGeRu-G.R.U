@@ -6,6 +6,9 @@ namespace App\Controllers;
 use App\Models\RepositorioUsuarios;
 use App\Models\Administrador;
 use App\Models\Operario;
+use App\Models\OperarioRecoleccion;
+use App\Models\OperarioClasificacion;
+use App\Models\OperarioVertedero;
 use App\Models\Vecino;
 
 /**
@@ -68,7 +71,7 @@ class UsuarioController
 
         $usuario = match ($rol) {
             'administrador' => new Administrador($id, $nombre, $email, $hash),
-            'operario'      => new Operario(
+            'operario'      => $this->crearOperario(
                 $id, $nombre, $email, $hash,
                 $datos['especialidad'] ?? 'recoleccion',
                 $datos['cuadrilla'] ?? null
@@ -130,6 +133,19 @@ class UsuarioController
     }
 
     // ---------------- Helpers internos ----------------
+
+    /**
+     * Crea la subclase de Operario correcta según la especialidad.
+     * Centraliza la decisión en un solo lugar (fábrica simple).
+     */
+    private function crearOperario(int $id, string $nombre, string $email, string $hash, string $especialidad, ?string $cuadrilla): Operario
+    {
+        return match ($especialidad) {
+            'clasificacion' => new OperarioClasificacion($id, $nombre, $email, $hash, $cuadrilla),
+            'vertedero'     => new OperarioVertedero($id, $nombre, $email, $hash, $cuadrilla),
+            default         => new OperarioRecoleccion($id, $nombre, $email, $hash, $cuadrilla),
+        };
+    }
 
     /** Lee y decodifica el cuerpo JSON del pedido. */
     private function leerJson(): array

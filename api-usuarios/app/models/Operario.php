@@ -4,54 +4,63 @@ declare(strict_types=1);
 namespace App\Models;
 
 /**
- * Operario interno.
+ * Operario interno (clase base ABSTRACTA).
  *
- * HEREDA de Usuario, pero agrega DOS datos propios que el administrador
- * define: la especialidad (recolección / clasificación / vertedero, según
- * 3.1.1.1.2) y la cuadrilla a la que pertenece (3.1.1.1.4).
+ * Antes había un solo Operario con un campo "especialidad". Ahora Operario
+ * es la base abstracta de una jerarquía de TRES subclases concretas:
  *
- * Un mismo Operario puede tener distinta especialidad; por eso NO hacemos
- * una subclase por cada especialidad, sino un campo. La cuadrilla es una
- * agrupación que arma el admin, no un tipo de usuario.
+ *     Usuario (abstracta)
+ *       └── Operario (abstracta)   ← esta clase
+ *             ├── OperarioRecoleccion
+ *             ├── OperarioClasificacion
+ *             └── OperarioVertedero
+ *
+ * Todo lo COMÚN a los tres operarios vive acá (la cuadrilla, el rol base).
+ * Lo que los DIFERENCIA (su especialidad) lo define cada subclase con el
+ * método abstracto getEspecialidad(). Eso es herencia + polimorfismo.
+ *
+ * Es abstracta porque "un operario a secas" no existe: siempre es de
+ * recolección, de clasificación o de vertedero.
  */
-class Operario extends Usuario
+abstract class Operario extends Usuario
 {
-    private string $especialidad; // 'recoleccion' | 'clasificacion' | 'vertedero'
-    private ?string $cuadrilla;   // puede no tener cuadrilla asignada todavía (null)
+    protected ?string $cuadrilla; // agrupación que asigna el admin (puede ser null)
 
     public function __construct(
         int $id,
         string $nombre,
         string $email,
         string $passwordHash,
-        string $especialidad,
         ?string $cuadrilla = null
     ) {
-        // "parent::__construct" llama al constructor de la clase padre (Usuario)
-        // para que rellene id, nombre, email y passwordHash. Así no repetimos.
         parent::__construct($id, $nombre, $email, $passwordHash);
-        $this->especialidad = $especialidad;
         $this->cuadrilla = $cuadrilla;
     }
 
+    /** Todos los operarios comparten el rol base "operario". */
     public function getRol(): string
     {
         return 'operario';
     }
 
-    public function getEspecialidad(): string    { return $this->especialidad; }
-    public function getCuadrilla(): ?string      { return $this->cuadrilla; }
-    public function setEspecialidad(string $e): void { $this->especialidad = $e; }
-    public function setCuadrilla(?string $c): void   { $this->cuadrilla = $c; }
+    /**
+     * Cada subclase DEBE definir su especialidad. La base no sabe cuál es.
+     * (método abstracto = obliga a las hijas a implementarlo)
+     */
+    abstract public function getEspecialidad(): string;
+
+    public function getCuadrilla(): ?string    { return $this->cuadrilla; }
+    public function setCuadrilla(?string $c): void { $this->cuadrilla = $c; }
 
     /**
-     * Sobreescribimos jsonSerialize para agregar los campos extra del operario.
-     * Primero pedimos el JSON del padre (parent::) y le sumamos lo nuestro.
+     * Al serializar a JSON agregamos especialidad y cuadrilla a lo que ya
+     * trae el padre (id, nombre, email, rol). Como getEspecialidad() es
+     * polimórfico, cada subclase aporta su propio valor automáticamente.
      */
     public function jsonSerialize(): array
     {
         $base = parent::jsonSerialize();
-        $base['especialidad'] = $this->especialidad;
+        $base['especialidad'] = $this->getEspecialidad();
         $base['cuadrilla'] = $this->cuadrilla;
         return $base;
     }
