@@ -88,6 +88,10 @@ switch ($metodo . ' ' . $ruta) {
         $cuadrillaCtrl->eliminar();
         break;
 
+    case 'POST /cuadrillas/operarios':
+        $cuadrillaCtrl->asignarOperarios();
+        break;
+
     default:
         http_response_code(404);
         header('Content-Type: application/json; charset=utf-8');

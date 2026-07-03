@@ -4,7 +4,17 @@
         "nombre": "Cuadrilla Norte",
         "zona": "Zona Norte",
         "operarios": [
-            2
+            2,
+            6
+        ]
+    },
+    {
+        "id": 2,
+        "nombre": "Cuadrilla Sur",
+        "zona": "Zona Sur",
+        "operarios": [
+            3,
+            4
         ]
     }
 ]

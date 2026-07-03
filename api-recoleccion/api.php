@@ -57,6 +57,10 @@ switch ($metodo . ' ' . $ruta) {
         $camionCtrl->asignarCuadrilla();
         break;
 
+    case 'POST /camiones/asignar-flota':
+        $camionCtrl->asignarFlota();
+        break;
+
     case 'GET /flotas':
         $flotaCtrl->listar();
         break;

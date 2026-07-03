@@ -90,6 +90,28 @@ class CamionController
         $this->responder(['mensaje' => 'Cuadrilla asignada al camión.', 'camion' => $camion], 200);
     }
 
+    /**
+     * POST /camiones/asignar-flota — mueve un camión a una flota (o lo quita).
+     * Recibe { id, flotaId }. flotaId null lo deja sin flota.
+     */
+    public function asignarFlota(): void
+    {
+        $datos = $this->leerJson();
+        $id = (int)($datos['id'] ?? 0);
+        $flotaId = isset($datos['flotaId']) && $datos['flotaId'] !== '' && $datos['flotaId'] !== null
+            ? (int)$datos['flotaId'] : null;
+
+        $camion = $this->repo->buscarPorId($id);
+        if ($camion === null) {
+            $this->error('No existe un camión con ese id.', 404);
+        }
+
+        $camion->setFlotaId($flotaId);
+        $this->repo->actualizar($camion);
+
+        $this->responder(['mensaje' => 'Camión movido de flota.', 'camion' => $camion], 200);
+    }
+
     private function leerJson(): array
     {
         $cuerpo = file_get_contents('php://input');

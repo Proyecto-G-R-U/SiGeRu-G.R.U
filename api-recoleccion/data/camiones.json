@@ -25,5 +25,14 @@
         "disponibilidad": "disponible",
         "flotaId": 2,
         "cuadrillaId": null
+    },
+    {
+        "id": 4,
+        "patente": "STP 4686",
+        "modelo": "Volvo FE",
+        "estado": "operativo",
+        "disponibilidad": "en_ruta",
+        "flotaId": 1,
+        "cuadrillaId": null
     }
 ]

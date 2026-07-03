@@ -3,7 +3,7 @@
         "id": 1,
         "nombre": "Carlos Rodríguez",
         "email": "admin@sigeru.uy",
-        "passwordHash": "$2y$10$9uLQmRIjsBtGxh72pdUJsuksOr6mnkVJcgJxSOYKmcJXMhpY.PQeK",
+        "passwordHash": "$2y$10$AHxM03kQwobsS6wHf6XqvujQcUnatUHgAO6\/cGYvfz4qQe6NaMYZi",
         "rol": "administrador",
         "especialidad": null,
         "cuadrilla": null
@@ -12,7 +12,7 @@
         "id": 2,
         "nombre": "Marta Pérez",
         "email": "recoleccion@sigeru.uy",
-        "passwordHash": "$2y$10$9uLQmRIjsBtGxh72pdUJsuksOr6mnkVJcgJxSOYKmcJXMhpY.PQeK",
+        "passwordHash": "$2y$10$AHxM03kQwobsS6wHf6XqvujQcUnatUHgAO6\/cGYvfz4qQe6NaMYZi",
         "rol": "operario",
         "especialidad": "recoleccion",
         "cuadrilla": "Cuadrilla Norte"
@@ -21,7 +21,7 @@
         "id": 3,
         "nombre": "Julián Fernández",
         "email": "clasificacion@sigeru.uy",
-        "passwordHash": "$2y$10$9uLQmRIjsBtGxh72pdUJsuksOr6mnkVJcgJxSOYKmcJXMhpY.PQeK",
+        "passwordHash": "$2y$10$AHxM03kQwobsS6wHf6XqvujQcUnatUHgAO6\/cGYvfz4qQe6NaMYZi",
         "rol": "operario",
         "especialidad": "clasificacion",
         "cuadrilla": null
@@ -30,7 +30,7 @@
         "id": 4,
         "nombre": "Ana Silva",
         "email": "vertedero@sigeru.uy",
-        "passwordHash": "$2y$10$9uLQmRIjsBtGxh72pdUJsuksOr6mnkVJcgJxSOYKmcJXMhpY.PQeK",
+        "passwordHash": "$2y$10$AHxM03kQwobsS6wHf6XqvujQcUnatUHgAO6\/cGYvfz4qQe6NaMYZi",
         "rol": "operario",
         "especialidad": "vertedero",
         "cuadrilla": null
@@ -39,9 +39,18 @@
         "id": 5,
         "nombre": "Vecino de Prueba",
         "email": "vecino@gmail.com",
-        "passwordHash": "$2y$10$9uLQmRIjsBtGxh72pdUJsuksOr6mnkVJcgJxSOYKmcJXMhpY.PQeK",
+        "passwordHash": "$2y$10$AHxM03kQwobsS6wHf6XqvujQcUnatUHgAO6\/cGYvfz4qQe6NaMYZi",
         "rol": "vecino",
         "especialidad": null,
+        "cuadrilla": null
+    },
+    {
+        "id": 6,
+        "nombre": "Facundo",
+        "email": "oramasfacu@gmail.com",
+        "passwordHash": "$2y$10$wTzTPNJneSCiym0ymD035ecwvWmputsn1dhmPj3QK0dT9SNgn4uHe",
+        "rol": "operario",
+        "especialidad": "recoleccion",
         "cuadrilla": null
     }
 ]

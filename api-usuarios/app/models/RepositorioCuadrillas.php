@@ -93,6 +93,29 @@ class RepositorioCuadrillas
         return true;
     }
 
+    /**
+     * Reemplaza la lista de operarios de una cuadrilla. Devuelve true si la
+     * cuadrilla existía y se actualizó, false si no existe.
+     * @param int[] $operarios ids de operarios
+     */
+    public function actualizarOperarios(int $id, array $operarios): bool
+    {
+        $filas = $this->leerCrudo();
+        $encontrado = false;
+        foreach ($filas as $i => $f) {
+            if ((int)$f['id'] === $id) {
+                $filas[$i]['operarios'] = array_values(array_map('intval', $operarios));
+                $encontrado = true;
+                break;
+            }
+        }
+        if (!$encontrado) {
+            return false;
+        }
+        $this->guardarCrudo($filas);
+        return true;
+    }
+
     public function proximoId(): int
     {
         $filas = $this->leerCrudo();

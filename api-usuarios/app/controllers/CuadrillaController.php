@@ -57,6 +57,25 @@ class CuadrillaController
         $this->responder(['mensaje' => 'Cuadrilla eliminada.'], 200);
     }
 
+    /**
+     * POST /cuadrillas/operarios — reemplaza la lista de operarios de una
+     * cuadrilla. Recibe { id, operarios: [ids] }.
+     */
+    public function asignarOperarios(): void
+    {
+        $datos = $this->leerJson();
+        $id = (int)($datos['id'] ?? 0);
+        $operarios = is_array($datos['operarios'] ?? null) ? $datos['operarios'] : [];
+
+        if ($id <= 0) {
+            $this->error('Falta el id de la cuadrilla.', 400);
+        }
+        if (!$this->repo->actualizarOperarios($id, $operarios)) {
+            $this->error('No existe una cuadrilla con ese id.', 404);
+        }
+        $this->responder(['mensaje' => 'Integrantes actualizados.'], 200);
+    }
+
     private function leerJson(): array
     {
         $cuerpo = file_get_contents('php://input');

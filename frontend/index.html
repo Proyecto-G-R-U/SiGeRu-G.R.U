@@ -82,6 +82,9 @@
     let cacheFlotas = [];
     let cacheUsuarios = [];
 
+    // Si viene de "click en camión", muestra solo esta cuadrilla en Usuarios.
+    let cuadrillaFiltrada = null;
+
     // -------------------------------------------------------------
     // CONFIGURACIÓN DE CADA ROL: color (clase de tema), título del
     // panel, texto del badge y el "tipo" con el que decidimos la vista.
@@ -187,9 +190,16 @@
 
         nav.innerHTML = items.map(function (it, i) {
             return '<a class="nav-item' + (i === 0 ? ' activo' : '') + '" ' +
-                'id="nav-' + it.id + '" onclick="mostrarSeccion(\'' + it.id + '\')">' +
+                'id="nav-' + it.id + '" onclick="clickMenu(\'' + it.id + '\')">' +
                 '<span class="material-icons-outlined">' + it.icono + '</span> ' + it.texto + '</a>';
         }).join('');
+    }
+
+    // Click en el menú lateral. Limpia el filtro de cuadrilla (para que
+    // "Usuarios" desde el menú muestre siempre todas), y muestra la sección.
+    function clickMenu(id) {
+        cuadrillaFiltrada = null;
+        mostrarSeccion(id);
     }
 
     // -------------------------------------------------------------
@@ -246,6 +256,9 @@
         + '<table class="tabla"><thead><tr><th>ID</th><th>Nombre</th><th>Email</th>'
         + '<th>Rol</th><th>Acción</th></tr></thead><tbody id="tabla-usuarios"></tbody></table>'
         + '<h2 class="sec-titulo">Cuadrillas</h2>'
+        + '<div id="cuad-filtro-aviso" class="filtro-aviso" style="display:none;">'
+        + '<span>Mostrando solo la cuadrilla del camión seleccionado.</span>'
+        + '<button class="btn-mini" onclick="limpiarFiltroCuadrilla()">Ver todas</button></div>'
         + '<div class="panel"><h3>Nueva cuadrilla</h3>'
         + '<form id="form-cuadrilla" class="form-inline">'
         + '<div><label>Nombre</label><input type="text" id="cu-nombre" required></div>'
@@ -253,7 +266,7 @@
         + '<div class="full"><button type="submit" class="btn">Crear cuadrilla</button></div>'
         + '</form><p class="msg" id="cu-msg"></p></div>'
         + '<table class="tabla"><thead><tr><th>ID</th><th>Nombre</th><th>Zona</th>'
-        + '<th>Operarios</th><th>Acción</th></tr></thead><tbody id="tabla-cuadrillas"></tbody></table>';
+        + '<th>Integrantes</th><th>Acción</th></tr></thead><tbody id="tabla-cuadrillas"></tbody></table>';
     }
 
     function plantillaContenedores() {
@@ -304,7 +317,7 @@
         + '<div><label>Zona</label><input type="text" id="f-zona"></div>'
         + '<div class="full"><button type="submit" class="btn">Crear flota</button></div>'
         + '</form><p class="msg" id="f-msg"></p></div>'
-        + '<div id="panel-flotas" class="flotas-grid"></div>';
+        + '<div id="panel-flotas"></div>';
     }
 
     // Muestra/oculta el selector de especialidad según el rol elegido.
@@ -447,21 +460,75 @@
     async function cargarCuadrillas() {
         const tbody = document.getElementById('tabla-cuadrillas');
         if (!tbody) return;
+
+        // Traemos usuarios para poder listar/seleccionar operarios.
+        try { cacheUsuarios = await (await fetch(API_USUARIOS + '/usuarios')).json(); } catch (e) { cacheUsuarios = []; }
+        // Solo los operarios pueden integrar cuadrillas.
+        const operarios = cacheUsuarios.filter(function (u) { return u.rol === 'operario'; });
+
         try {
             const resp = await fetch(API_USUARIOS + '/cuadrillas');
             cacheCuadrillas = await resp.json();
-            tbody.innerHTML = cacheCuadrillas.map(function (c) {
-                const cant = (c.operarios || []).length;
+
+            // Si venimos de un click en camión, mostramos solo esa cuadrilla.
+            let lista = cacheCuadrillas;
+            const aviso = document.getElementById('cuad-filtro-aviso');
+            if (cuadrillaFiltrada !== null) {
+                lista = cacheCuadrillas.filter(function (c) { return c.id === cuadrillaFiltrada; });
+                if (aviso) aviso.style.display = 'flex';
+            } else if (aviso) {
+                aviso.style.display = 'none';
+            }
+
+            tbody.innerHTML = lista.map(function (c) {
+                // Checkboxes de TODOS los operarios; marcados los que integran la cuadrilla.
+                const integrantes = c.operarios || [];
+                const checks = operarios.map(function (op) {
+                    const marcado = integrantes.indexOf(op.id) !== -1 ? ' checked' : '';
+                    const esp = op.especialidad ? ' (' + op.especialidad + ')' : '';
+                    return '<label class="op-check"><input type="checkbox" value="' + op.id + '"' + marcado +
+                        ' onchange="guardarIntegrantes(' + c.id + ')"> ' + op.nombre + esp + '</label>';
+                }).join('');
+                const bloqueChecks = '<div class="op-checks" id="checks-cuad-' + c.id + '">' +
+                    (operarios.length ? checks : '<span class="txt-muted">No hay operarios creados.</span>') + '</div>';
+
                 return '<tr><td>' + c.id + '</td><td>' + c.nombre + '</td><td>' +
-                    (c.zona || '—') + '</td><td>' + cant + ' operario(s)</td><td>' +
+                    (c.zona || '—') + '</td><td>' + bloqueChecks + '</td><td>' +
                     '<button class="btn-eliminar" onclick="eliminarCuadrilla(' + c.id + ')">Eliminar</button>' +
                     '</td></tr>';
             }).join('');
+            if (lista.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="txt-muted">No hay cuadrillas para mostrar.</td></tr>';
+            }
         } catch (err) {
             tbody.innerHTML = '<tr><td colspan="5">Error al conectar con API Usuarios.</td></tr>';
         }
         const form = document.getElementById('form-cuadrilla');
         if (form) form.onsubmit = altaCuadrilla;
+    }
+
+    // Junta los checkboxes marcados de una cuadrilla y los guarda en la API.
+    async function guardarIntegrantes(cuadrillaId) {
+        const cont = document.getElementById('checks-cuad-' + cuadrillaId);
+        if (!cont) return;
+        const marcados = Array.prototype.slice.call(cont.querySelectorAll('input:checked'))
+            .map(function (chk) { return parseInt(chk.value); });
+        try {
+            await fetch(API_USUARIOS + '/cuadrillas/operarios', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: cuadrillaId, operarios: marcados }),
+            });
+            // Actualizamos el cache local para que otras vistas lo reflejen.
+            const c = cacheCuadrillas.find(function (x) { return x.id === cuadrillaId; });
+            if (c) c.operarios = marcados;
+        } catch (err) { alert('Error al guardar integrantes.'); }
+    }
+
+    // Quita el filtro de cuadrilla y recarga la lista completa.
+    function limpiarFiltroCuadrilla() {
+        cuadrillaFiltrada = null;
+        cargarCuadrillas();
     }
 
     async function altaCuadrilla(e) {
@@ -556,15 +623,22 @@
             const lista = await resp.json();
             tbody.innerHTML = lista.map(function (k) {
                 // Selector de cuadrilla en línea para asignar.
-                let opciones = '<option value="">(sin cuadrilla)</option>' +
+                let opcCuad = '<option value="">(sin cuadrilla)</option>' +
                     cacheCuadrillas.map(function (c) {
                         const sel = (c.id === k.cuadrillaId) ? ' selected' : '';
                         return '<option value="' + c.id + '"' + sel + '>' + c.nombre + '</option>';
                     }).join('');
-                const selectCuad = '<select onchange="asignarCuadrilla(' + k.id + ', this.value)">' + opciones + '</select>';
+                const selectCuad = '<select onchange="asignarCuadrilla(' + k.id + ', this.value)">' + opcCuad + '</select>';
+                // Selector de flota en línea para mover el camión.
+                let opcFlota = '<option value="">(sin flota)</option>' +
+                    cacheFlotas.map(function (f) {
+                        const sel = (f.id === k.flotaId) ? ' selected' : '';
+                        return '<option value="' + f.id + '"' + sel + '>' + f.nombre + '</option>';
+                    }).join('');
+                const selectFlota = '<select onchange="moverAFlota(' + k.id + ', this.value)">' + opcFlota + '</select>';
                 return '<tr><td>' + k.id + '</td><td>' + k.patente + '</td><td>' +
                     k.modelo + '</td><td>' + k.estado + '</td><td>' + k.disponibilidad + '</td><td>' +
-                    nombreFlota(k.flotaId) + '</td><td>' + selectCuad + '</td><td>' +
+                    selectFlota + '</td><td>' + selectCuad + '</td><td>' +
                     '<button class="btn-eliminar" onclick="eliminarCamion(' + k.id + ')">Eliminar</button>' +
                     '</td></tr>';
             }).join('');
@@ -616,6 +690,17 @@
         } catch (err) { alert('Error de conexión.'); }
     }
 
+    async function moverAFlota(camionId, flotaId) {
+        try {
+            const resp = await fetch(API_RECOLECCION + '/camiones/asignar-flota', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: camionId, flotaId: flotaId || null }),
+            });
+            if (!resp.ok) { const r = await resp.json(); alert(r.error || 'No se pudo mover.'); }
+        } catch (err) { alert('Error de conexión.'); }
+    }
+
     async function eliminarCamion(id) {
         if (!confirm('¿Eliminar este camión?')) return;
         try {
@@ -658,8 +743,8 @@
         }
     }
 
-    // Dibuja el panel: una tarjeta por flota, con sus camiones dentro.
-    // Al clickear un camión se muestra la cuadrilla asignada.
+    // Dibuja el panel: una TABLA por flota que engloba sus camiones.
+    // Al clickear un camión, se navega a la cuadrilla asignada (sección Usuarios).
     async function cargarPanelFlotas() {
         const cont = document.getElementById('panel-flotas');
         const form = document.getElementById('form-flota');
@@ -670,48 +755,90 @@
             cacheCuadrillas = await (await fetch(API_USUARIOS + '/cuadrillas')).json();
             const camiones  = await (await fetch(API_RECOLECCION + '/camiones')).json();
 
-            cont.innerHTML = cacheFlotas.map(function (f) {
+            let html = cacheFlotas.map(function (f) {
                 const suyos = camiones.filter(function (k) { return k.flotaId === f.id; });
-                const cards = suyos.length === 0
-                    ? '<p class="flota-vacia">Sin camiones asignados</p>'
-                    : suyos.map(function (k) {
-                        return '<div class="camion-card" onclick="verCuadrillaCamion(' + k.id + ', \'' +
-                            k.patente.replace(/'/g, "") + '\', ' + (k.cuadrillaId === null ? 'null' : k.cuadrillaId) + ')">' +
-                            '<span class="material-icons-outlined">local_shipping</span>' +
-                            '<span class="camion-pat">' + k.patente + '</span>' +
-                            '<span class="camion-modelo">' + k.modelo + '</span></div>';
+                // Camiones que NO están en ninguna flota (para el selector de agregar)
+                const libres = camiones.filter(function (k) { return k.flotaId === null || k.flotaId === undefined; });
+
+                let filas;
+                if (suyos.length === 0) {
+                    filas = '<tr><td colspan="4" class="flota-vacia">Sin camiones en esta flota</td></tr>';
+                } else {
+                    filas = suyos.map(function (k) {
+                        const cuadTxt = (k.cuadrillaId === null || k.cuadrillaId === undefined)
+                            ? '<span class="txt-muted">Sin cuadrilla</span>'
+                            : '<a class="link-cuad" onclick="irACuadrilla(' + k.cuadrillaId + ')">' +
+                              nombreCuadrilla(k.cuadrillaId) + '</a>';
+                        return '<tr class="fila-camion" onclick="clickCamionFlota(event, ' + k.id + ', ' +
+                            (k.cuadrillaId === null ? 'null' : k.cuadrillaId) + ", '" + k.patente.replace(/'/g, '') + "')" + '">' +
+                            '<td>' + k.patente + '</td><td>' + k.modelo + '</td><td>' + k.estado + '</td><td>' +
+                            cuadTxt + '</td></tr>';
                     }).join('');
-                return '<div class="flota-card"><div class="flota-head">' +
-                    '<h3>' + f.nombre + '</h3><span class="flota-zona">' + (f.zona || '') + '</span>' +
+                }
+
+                // Selector para agregar un camión libre a esta flota.
+                const opcionesLibres = libres.length
+                    ? libres.map(function (k) { return '<option value="' + k.id + '">' + k.patente + ' - ' + k.modelo + '</option>'; }).join('')
+                    : '';
+                const agregar = libres.length
+                    ? '<div class="flota-agregar"><select id="add-flota-' + f.id + '">' +
+                      '<option value="">Agregar camión sin flota…</option>' + opcionesLibres + '</select>' +
+                      '<button class="btn-mini" onclick="agregarCamionAFlota(' + f.id + ')">Agregar</button></div>'
+                    : '<p class="txt-muted flota-nota">No hay camiones sin flota para agregar.</p>';
+
+                return '<div class="flota-bloque">' +
+                    '<div class="flota-head"><h3>' + f.nombre + '</h3>' +
+                    '<span class="flota-zona">' + (f.zona || '') + '</span>' +
                     '<button class="btn-eliminar" onclick="eliminarFlota(' + f.id + ')">Eliminar</button></div>' +
-                    '<div class="camiones-wrap">' + cards + '</div></div>';
-            }).join('') || '<p class="flota-vacia">No hay flotas. Creá una arriba.</p>';
+                    '<table class="tabla"><thead><tr><th>Patente</th><th>Modelo</th><th>Estado</th>' +
+                    '<th>Cuadrilla</th></tr></thead><tbody>' + filas + '</tbody></table>' +
+                    agregar + '</div>';
+            }).join('');
+
+            cont.innerHTML = html || '<p class="flota-vacia">No hay flotas. Creá una arriba.</p>';
         } catch (err) {
             cont.innerHTML = '<p class="flota-vacia">Error al conectar con las APIs.</p>';
         }
     }
 
-    // Muestra la cuadrilla (y sus operarios) del camión clickeado.
-    async function verCuadrillaCamion(camionId, patente, cuadrillaId) {
-        if (cuadrillaId === null || cuadrillaId === undefined || cuadrillaId === 'null') {
+    // Click en una fila de camión: si tocaste el link de la cuadrilla, ese link
+    // ya maneja la navegación. Si tocaste el resto de la fila, vamos a la
+    // cuadrilla igual (o avisamos si no tiene).
+    function clickCamionFlota(event, camionId, cuadrillaId, patente) {
+        if (event.target.classList.contains('link-cuad')) return; // lo maneja el link
+        if (cuadrillaId === null || cuadrillaId === undefined) {
             alert('El camión ' + patente + ' no tiene cuadrilla asignada.');
             return;
         }
-        // Buscamos la cuadrilla en cache
-        const cuad = cacheCuadrillas.find(function (c) { return c.id === cuadrillaId; });
-        if (!cuad) { alert('Cuadrilla no encontrada.'); return; }
+        irACuadrilla(cuadrillaId);
+    }
 
-        // Traemos los usuarios para resolver los nombres de los operarios.
-        if (cacheUsuarios.length === 0) {
-            try { cacheUsuarios = await (await fetch(API_USUARIOS + '/usuarios')).json(); } catch (e) {}
+    // Agrega un camión "libre" (sin flota) a una flota concreta.
+    async function agregarCamionAFlota(flotaId) {
+        const sel = document.getElementById('add-flota-' + flotaId);
+        const camionId = sel ? sel.value : '';
+        if (!camionId) { alert('Elegí un camión para agregar.'); return; }
+        try {
+            const resp = await fetch(API_RECOLECCION + '/camiones/asignar-flota', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: parseInt(camionId), flotaId: flotaId }),
+            });
+            if (resp.ok) cargarPanelFlotas();
+            else { const r = await resp.json(); alert(r.error || 'No se pudo agregar.'); }
+        } catch (err) { alert('Error de conexión.'); }
+    }
+
+    // Navega a la sección Usuarios y muestra SOLO la cuadrilla indicada.
+    function irACuadrilla(cuadrillaId) {
+        cuadrillaFiltrada = cuadrillaId;
+        // Simular click en el ítem de menú "Usuarios"
+        mostrarSeccion('usuarios');
+        const nav = document.getElementById('nav-usuarios');
+        if (nav) {
+            document.querySelectorAll('.nav-item').forEach(function (a) { a.classList.remove('activo'); });
+            nav.classList.add('activo');
         }
-        const nombres = (cuad.operarios || []).map(function (opId) {
-            const u = cacheUsuarios.find(function (x) { return x.id === opId; });
-            return u ? ('• ' + u.nombre + (u.especialidad ? ' (' + u.especialidad + ')' : '')) : ('• #' + opId);
-        });
-        const detalle = nombres.length ? nombres.join('\n') : '(sin operarios asignados)';
-        alert('Camión ' + patente + '\nCuadrilla: ' + cuad.nombre +
-              (cuad.zona ? ' — ' + cuad.zona : '') + '\n\nOperarios:\n' + detalle);
     }
 
     async function eliminarFlota(id) {
