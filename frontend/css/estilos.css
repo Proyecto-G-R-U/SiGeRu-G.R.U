@@ -163,3 +163,16 @@ html, body { height:100%; font-family:'Segoe UI', sans-serif; background:var(--b
     border:1px solid var(--border); border-radius:8px; padding:11px 16px; margin-bottom:16px;
     font-size:13px; color:var(--txt); }
 .filtro-aviso span { flex:1; }
+
+/* ---- MAPA (Leaflet) ---- */
+.mapa { width:100%; height:280px; border:1px solid var(--border); border-radius:var(--radius);
+    margin-top:6px; z-index:0; }
+.mapa-grande { height:400px; margin-bottom:22px; }
+.mapa-coord { font-size:12.5px; color:var(--muted); margin-top:8px; }
+/* Pin de contenedor: círculo de color con borde blanco */
+.pin-cont span { display:block; width:18px; height:18px; border-radius:50%;
+    border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.4); }
+
+/* ---- Mensaje de error del mapa (si Leaflet no carga) ---- */
+.mapa-error { background:#fff3f3; border:1px solid #f0c0c0; color:#b71c1c; border-radius:var(--radius);
+    padding:16px; font-size:13px; line-height:1.6; margin-top:6px; }

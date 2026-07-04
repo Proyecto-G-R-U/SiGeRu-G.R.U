@@ -1,0 +1,38 @@
+[
+    {
+        "id": 1,
+        "codigo": "CNT-102",
+        "direccion": "Av. Italia y Bulevar Artigas",
+        "tipoResiduo": "reciclable",
+        "estado": "operativo",
+        "lat": -34.902,
+        "lng": -56.155
+    },
+    {
+        "id": 2,
+        "codigo": "CNT-403",
+        "direccion": "Rambla y Buceo",
+        "tipoResiduo": "mezclado",
+        "estado": "desbordado",
+        "lat": -34.911,
+        "lng": -56.136
+    },
+    {
+        "id": 3,
+        "codigo": "CNT-210",
+        "direccion": "Pocitos, 26 de Marzo",
+        "tipoResiduo": "reciclable",
+        "estado": "operativo",
+        "lat": -34.9095,
+        "lng": -56.152
+    },
+    {
+        "id": 4,
+        "codigo": "CNT-100",
+        "direccion": "Geminis",
+        "tipoResiduo": "mezclado",
+        "estado": "operativo",
+        "lat": -34.83278785077747,
+        "lng": -56.10916793346406
+    }
+]

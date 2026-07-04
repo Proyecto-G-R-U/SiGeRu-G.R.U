@@ -8,7 +8,9 @@ use App\Models\Contenedor;
 
 /**
  * ContenedorController: lógica de la API de Gestión.
- * Versión sin core: arma el JSON con sus propios helpers.
+ *   listar()   -> GET  /contenedores
+ *   crear()    -> POST /contenedores
+ *   eliminar() -> POST /contenedores/eliminar
  */
 class ContenedorController
 {
@@ -19,41 +21,54 @@ class ContenedorController
         $this->repo = $repo;
     }
 
-    /** GET /contenedores — listado completo. */
     public function listar(): void
     {
         $this->responder($this->repo->todos(), 200);
     }
 
-    /** POST /contenedores — alta de contenedor. */
     public function crear(): void
     {
         $datos = $this->leerJson();
         $codigo      = trim($datos['codigo'] ?? '');
-        $ubicacion   = trim($datos['ubicacion'] ?? '');
+        $direccion   = trim($datos['direccion'] ?? '');
         $tipoResiduo = $datos['tipoResiduo'] ?? 'mezclado';
         $estado      = $datos['estado'] ?? 'operativo';
+        $lat = isset($datos['lat']) && $datos['lat'] !== '' && $datos['lat'] !== null ? (float)$datos['lat'] : null;
+        $lng = isset($datos['lng']) && $datos['lng'] !== '' && $datos['lng'] !== null ? (float)$datos['lng'] : null;
 
-        if ($codigo === '' || $ubicacion === '') {
-            $this->error('Código y ubicación son obligatorios.', 400);
+        if ($codigo === '' || $direccion === '') {
+            $this->error('Código y dirección son obligatorios.', 400);
+        }
+        if ($lat === null || $lng === null) {
+            $this->error('Marcá la ubicación del contenedor en el mapa.', 400);
         }
 
         $contenedor = new Contenedor(
             $this->repo->proximoId(),
             $codigo,
-            $ubicacion,
+            $direccion,
             $tipoResiduo,
-            $estado
+            $estado,
+            $lat,
+            $lng
         );
         $this->repo->agregar($contenedor);
 
-        $this->responder([
-            'mensaje'    => 'Contenedor creado correctamente.',
-            'contenedor' => $contenedor,
-        ], 201);
+        $this->responder(['mensaje' => 'Contenedor creado correctamente.', 'contenedor' => $contenedor], 201);
     }
 
-    // ---------------- Helpers internos ----------------
+    public function eliminar(): void
+    {
+        $datos = $this->leerJson();
+        $id = (int)($datos['id'] ?? 0);
+        if ($id <= 0) {
+            $this->error('Falta el id del contenedor.', 400);
+        }
+        if (!$this->repo->eliminar($id)) {
+            $this->error('No existe un contenedor con ese id.', 404);
+        }
+        $this->responder(['mensaje' => 'Contenedor eliminado.'], 200);
+    }
 
     private function leerJson(): array
     {

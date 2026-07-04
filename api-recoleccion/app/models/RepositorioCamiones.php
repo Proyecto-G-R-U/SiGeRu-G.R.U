@@ -118,6 +118,38 @@ class RepositorioCamiones
         return true;
     }
 
+    /**
+     * Asigna una cuadrilla a un camión garantizando EXCLUSIVIDAD: quita esa
+     * cuadrilla de cualquier OTRO camión que la tuviera, y la deja solo en el
+     * camión indicado. Así una cuadrilla nunca está en dos camiones a la vez.
+     * Si $cuadrillaId es null, simplemente deja el camión sin cuadrilla.
+     * Devuelve true si el camión existe.
+     */
+    public function asignarCuadrillaExclusiva(int $camionId, ?int $cuadrillaId): bool
+    {
+        $filas = $this->leerCrudo();
+        $existe = false;
+
+        foreach ($filas as $i => $f) {
+            // Si otro camión tenía esta cuadrilla, se la quitamos.
+            if ($cuadrillaId !== null && (int)$f['id'] !== $camionId
+                && isset($f['cuadrillaId']) && (int)$f['cuadrillaId'] === $cuadrillaId) {
+                $filas[$i]['cuadrillaId'] = null;
+            }
+            // Al camión destino le ponemos la cuadrilla (o null).
+            if ((int)$f['id'] === $camionId) {
+                $filas[$i]['cuadrillaId'] = $cuadrillaId;
+                $existe = true;
+            }
+        }
+
+        if (!$existe) {
+            return false;
+        }
+        $this->guardarCrudo($filas);
+        return true;
+    }
+
     public function eliminar(int $id): bool
     {
         $filas = $this->leerCrudo();

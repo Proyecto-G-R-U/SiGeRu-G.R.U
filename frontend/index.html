@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>G.R.U — Panel</title>
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <link rel="stylesheet" href="css/estilos.css">
 </head>
 <body>
@@ -74,6 +76,13 @@
     const API_GESTION     = '../api-gestion';
     const API_RECOLECCION = '../api-recoleccion';
 
+    // Helper para peticiones GET que evita el caché del navegador. Sin esto,
+    // Chrome a veces devuelve la respuesta vieja y las listas no se actualizan
+    // hasta refrescar la página. 'no-store' obliga a pedir datos frescos.
+    function fetchGet(url) {
+        return fetch(url, { cache: 'no-store' });
+    }
+
     // Usuario logueado (para saber su rol/especialidad y su email).
     let usuarioActual = null;
 
@@ -84,6 +93,10 @@
 
     // Si viene de "click en camión", muestra solo esta cuadrilla en Usuarios.
     let cuadrillaFiltrada = null;
+
+    // Recuerda en qué pestaña/sección estamos, para poder recargarla entera
+    // tras agregar o eliminar algo (así se actualizan tabla, selectores y mapa).
+    let seccionActual = 'inicio';
 
     // -------------------------------------------------------------
     // CONFIGURACIÓN DE CADA ROL: color (clase de tema), título del
@@ -140,6 +153,14 @@
     });
 
     function entrarAlPanel(usuario) {
+        // Guardamos la sesión para que sobreviva a un refresco de página.
+        // sessionStorage se borra al cerrar el navegador (más seguro).
+        try { sessionStorage.setItem('sigeru_usuario', JSON.stringify(usuario)); } catch (e) {}
+        mostrarPanelDe(usuario);
+    }
+
+    // Aplica en pantalla el panel del usuario (sin volver a tocar el storage).
+    function mostrarPanelDe(usuario) {
         usuarioActual = usuario;
         const rol = rolEfectivo(usuario);
         const cfg = ROLES[rol] || ROLES.vecino;
@@ -158,17 +179,28 @@
 
         // Armar menú y contenido según el rol
         construirMenu(rol);
-        // Por defecto mostramos "Inicio"
         mostrarSeccion('inicio');
     }
 
     function cerrarSesion() {
         usuarioActual = null;
+        try { sessionStorage.removeItem('sigeru_usuario'); } catch (e) {}
         document.body.className = '';
         document.getElementById('pantalla-app').classList.add('oculto');
         document.getElementById('pantalla-login').classList.remove('oculto');
         formLogin.reset();
         loginMsg.textContent = '';
+    }
+
+    // Al cargar la página, si había una sesión guardada, la restauramos
+    // (así un F5 no te devuelve al login).
+    function restaurarSesion() {
+        try {
+            const guardado = sessionStorage.getItem('sigeru_usuario');
+            if (guardado) {
+                mostrarPanelDe(JSON.parse(guardado));
+            }
+        } catch (e) { /* si algo falla, se queda en el login normal */ }
     }
 
     // -------------------------------------------------------------
@@ -206,6 +238,7 @@
     // CAMBIO DE SECCIÓN
     // -------------------------------------------------------------
     function mostrarSeccion(id) {
+        seccionActual = id; // recordamos dónde estamos
         // marcar activo en el menú
         document.querySelectorAll('.nav-item').forEach(function (a) { a.classList.remove('activo'); });
         const navEl = document.getElementById('nav-' + id);
@@ -230,6 +263,16 @@
         if (id === 'contenedores') { content.innerHTML = plantillaContenedores(); cargarContenedores(); }
         if (id === 'camiones')     { content.innerHTML = plantillaCamiones();     cargarCamiones(); cargarFlotasEnSelect(); cargarCuadrillasEnSelect(); }
         if (id === 'flotas')       { content.innerHTML = plantillaFlotas();       cargarPanelFlotas(); }
+    }
+
+    // Vuelve a dibujar la sección actual completa (tabla + selectores + mapa),
+    // sin recargar la página ni sacarte de la pestaña. Se llama después de
+    // agregar o eliminar algo, para que TODO lo que depende de esos datos
+    // (no solo la tabla) se actualice al instante.
+    function recargarSeccionActual() {
+        if (seccionActual && seccionActual !== 'inicio') {
+            mostrarSeccion(seccionActual);
+        }
     }
 
     // =============================================================
@@ -274,7 +317,7 @@
         + '<div class="panel"><h3>Nuevo contenedor</h3>'
         + '<form id="form-contenedor" class="form-inline">'
         + '<div><label>Código</label><input type="text" id="c-codigo" required></div>'
-        + '<div><label>Ubicación</label><input type="text" id="c-ubicacion" required></div>'
+        + '<div><label>Dirección</label><input type="text" id="c-direccion" required></div>'
         + '<div><label>Tipo de residuo</label><select id="c-tipo">'
         + '<option value="mezclado">Mezclado</option>'
         + '<option value="reciclable">Reciclable</option></select></div>'
@@ -282,10 +325,16 @@
         + '<option value="operativo">Operativo</option>'
         + '<option value="roto">Roto</option>'
         + '<option value="desbordado">Desbordado</option></select></div>'
+        + '<div class="full"><label>Ubicación (hacé click en el mapa para marcarla)</label>'
+        + '<div id="mapa-crear" class="mapa"></div>'
+        + '<p class="mapa-coord" id="c-coord">Sin ubicación seleccionada.</p></div>'
         + '<div class="full"><button type="submit" class="btn">Agregar contenedor</button></div>'
         + '</form><p class="msg" id="c-msg"></p></div>'
-        + '<table class="tabla"><thead><tr><th>ID</th><th>Código</th><th>Ubicación</th>'
-        + '<th>Tipo</th><th>Estado</th></tr></thead><tbody id="tabla-contenedores"></tbody></table>';
+        + '<h2 class="sec-titulo">Contenedores en el mapa</h2>'
+        + '<div id="mapa-listado" class="mapa mapa-grande"></div>'
+        + '<table class="tabla"><thead><tr><th>ID</th><th>Código</th><th>Dirección</th>'
+        + '<th>Tipo</th><th>Estado</th><th>Acción</th></tr></thead>'
+        + '<tbody id="tabla-contenedores"></tbody></table>';
     }
 
     function plantillaCamiones() {
@@ -334,7 +383,7 @@
         const tbody = document.getElementById('tabla-usuarios');
         const esAdmin = usuarioActual && usuarioActual.rol === 'administrador';
         try {
-            const resp = await fetch(API_USUARIOS + '/usuarios');
+            const resp = await fetchGet(API_USUARIOS + '/usuarios');
             const usuarios = await resp.json();
             tbody.innerHTML = usuarios.map(function (u) {
                 let accion = '—';
@@ -382,7 +431,7 @@
                 msg.textContent = 'Usuario agregado.'; msg.classList.add('ok');
                 e.target.reset();
                 toggleEspecialidad();
-                cargarUsuarios();
+                recargarSeccionActual();
             } else {
                 msg.textContent = resultado.error; msg.classList.add('err');
             }
@@ -400,7 +449,7 @@
                 body: JSON.stringify({ id: id, adminEmail: usuarioActual.email }),
             });
             const resultado = await resp.json();
-            if (resp.ok) { cargarUsuarios(); }
+            if (resp.ok) { recargarSeccionActual(); }
             else { alert(resultado.error || 'No se pudo eliminar.'); }
         } catch (err) {
             alert('Error de conexión al eliminar.');
@@ -408,33 +457,137 @@
     }
 
     // =============================================================
-    //  CONTENEDORES
+    //  CONTENEDORES (con mapa interactivo Leaflet)
     // =============================================================
+    // Centro aproximado de Montevideo.
+    const MVD = [-34.9011, -56.1645];
+    let mapaCrear = null, mapaListado = null;   // instancias de mapa
+    let marcadorNuevo = null;                    // pin temporal al crear
+    let coordNueva = { lat: null, lng: null };   // coords elegidas
+    let capaPines = null;                        // capa de pines del listado
+
+    // Colores del pin según estado del contenedor.
+    function colorEstado(estado) {
+        if (estado === 'desbordado') return '#d32f2f';
+        if (estado === 'roto')       return '#f9a825';
+        return '#1b8536'; // operativo
+    }
+
+    // Crea un ícono de pin de color (div simple, sin imágenes externas).
+    function iconoPin(color) {
+        return L.divIcon({
+            className: 'pin-cont',
+            html: '<span style="background:' + color + '"></span>',
+            iconSize: [18, 18],
+            iconAnchor: [9, 9],
+        });
+    }
+
     async function cargarContenedores() {
-        const tbody = document.getElementById('tabla-contenedores');
-        try {
-            const resp = await fetch(API_GESTION + '/contenedores');
-            const lista = await resp.json();
-            tbody.innerHTML = lista.map(function (c) {
-                return '<tr><td>' + c.id + '</td><td>' + c.codigo + '</td><td>' +
-                    c.ubicacion + '</td><td>' + c.tipoResiduo + '</td><td>' + c.estado + '</td></tr>';
-            }).join('');
-        } catch (err) {
-            tbody.innerHTML = '<tr><td colspan="5">Error al conectar con API Gestión.</td></tr>';
-        }
         const form = document.getElementById('form-contenedor');
         if (form) form.onsubmit = altaContenedor;
+
+        // Si Leaflet no cargó (CDN bloqueado, sin internet), avisamos claro
+        // en pantalla en vez de dejar los mapas en blanco sin explicación.
+        if (typeof L === 'undefined') {
+            const aviso = '<div class="mapa-error">No se pudo cargar el mapa (Leaflet). ' +
+                'Verificá tu conexión a internet o si una extensión/firewall bloquea ' +
+                '<b>unpkg.com</b> y <b>openstreetmap.org</b>. La tabla de abajo funciona igual.</div>';
+            const mc = document.getElementById('mapa-crear');
+            const ml = document.getElementById('mapa-listado');
+            if (mc) mc.outerHTML = aviso;
+            if (ml) ml.outerHTML = aviso;
+            refrescarContenedores();
+            return;
+        }
+
+        // Creamos los mapas cuando el layout ya está listo. Usamos dos tiempos:
+        // 100ms para crear (el div ya tiene tamaño) y 300ms para invalidateSize
+        // (por si el panel terminó de acomodarse recién ahí).
+        setTimeout(function () {
+            if (document.getElementById('mapa-crear') && !mapaCrear) {
+                mapaCrear = L.map('mapa-crear').setView(MVD, 12);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap', maxZoom: 19,
+                }).addTo(mapaCrear);
+                mapaCrear.on('click', function (e) {
+                    coordNueva.lat = e.latlng.lat;
+                    coordNueva.lng = e.latlng.lng;
+                    if (marcadorNuevo) {
+                        marcadorNuevo.setLatLng(e.latlng);
+                    } else {
+                        marcadorNuevo = L.marker(e.latlng).addTo(mapaCrear);
+                    }
+                    const c = document.getElementById('c-coord');
+                    if (c) c.textContent = 'Ubicación: ' +
+                        e.latlng.lat.toFixed(5) + ', ' + e.latlng.lng.toFixed(5);
+                });
+            }
+
+            if (document.getElementById('mapa-listado') && !mapaListado) {
+                mapaListado = L.map('mapa-listado').setView(MVD, 12);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap', maxZoom: 19,
+                }).addTo(mapaListado);
+                capaPines = L.layerGroup().addTo(mapaListado);
+            }
+
+            refrescarContenedores();
+
+            // Segundo tiempo: recalcular tamaño cuando todo está estable.
+            setTimeout(function () {
+                if (mapaCrear) mapaCrear.invalidateSize();
+                if (mapaListado) mapaListado.invalidateSize();
+            }, 250);
+        }, 100);
+    }
+
+    // Trae los contenedores, llena la tabla y dibuja los pines en el mapa.
+    async function refrescarContenedores() {
+        const tbody = document.getElementById('tabla-contenedores');
+        try {
+            const lista = await (await fetchGet(API_GESTION + '/contenedores')).json();
+
+            if (tbody) {
+                tbody.innerHTML = lista.map(function (c) {
+                    return '<tr><td>' + c.id + '</td><td>' + c.codigo + '</td><td>' +
+                        c.direccion + '</td><td>' + c.tipoResiduo + '</td><td>' + c.estado + '</td><td>' +
+                        '<button class="btn-eliminar" onclick="eliminarContenedor(' + c.id + ')">Eliminar</button>' +
+                        '</td></tr>';
+                }).join('');
+            }
+
+            // Pines en el mapa del listado.
+            if (capaPines) {
+                capaPines.clearLayers();
+                lista.forEach(function (c) {
+                    if (c.lat === null || c.lng === null) return;
+                    L.marker([c.lat, c.lng], { icon: iconoPin(colorEstado(c.estado)) })
+                        .bindPopup('<b>' + c.codigo + '</b><br>' + c.direccion +
+                                   '<br>Tipo: ' + c.tipoResiduo + '<br>Estado: ' + c.estado)
+                        .addTo(capaPines);
+                });
+            }
+        } catch (err) {
+            if (tbody) tbody.innerHTML = '<tr><td colspan="6">Error al conectar con API Gestión.</td></tr>';
+        }
     }
 
     async function altaContenedor(e) {
         e.preventDefault();
         const msg = document.getElementById('c-msg');
         msg.className = 'msg';
+        if (coordNueva.lat === null || coordNueva.lng === null) {
+            msg.textContent = 'Marcá la ubicación en el mapa antes de agregar.'; msg.classList.add('err');
+            return;
+        }
         const datos = {
             codigo:      document.getElementById('c-codigo').value.trim(),
-            ubicacion:   document.getElementById('c-ubicacion').value.trim(),
+            direccion:   document.getElementById('c-direccion').value.trim(),
             tipoResiduo: document.getElementById('c-tipo').value,
             estado:      document.getElementById('c-estado').value,
+            lat:         coordNueva.lat,
+            lng:         coordNueva.lng,
         };
         try {
             const resp = await fetch(API_GESTION + '/contenedores', {
@@ -445,13 +598,32 @@
             const resultado = await resp.json();
             if (resp.ok) {
                 msg.textContent = 'Contenedor agregado.'; msg.classList.add('ok');
-                e.target.reset(); cargarContenedores();
+                e.target.reset();
+                // Limpiamos el pin temporal y las coords.
+                if (marcadorNuevo) { mapaCrear.removeLayer(marcadorNuevo); marcadorNuevo = null; }
+                coordNueva = { lat: null, lng: null };
+                const c = document.getElementById('c-coord');
+                if (c) c.textContent = 'Sin ubicación seleccionada.';
+                refrescarContenedores();
             } else {
                 msg.textContent = resultado.error; msg.classList.add('err');
             }
         } catch (err) {
             msg.textContent = 'Error de conexión.'; msg.classList.add('err');
         }
+    }
+
+    async function eliminarContenedor(id) {
+        if (!confirm('¿Eliminar este contenedor?')) return;
+        try {
+            const resp = await fetch(API_GESTION + '/contenedores/eliminar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id }),
+            });
+            if (resp.ok) refrescarContenedores();
+            else { const r = await resp.json(); alert(r.error || 'No se pudo eliminar.'); }
+        } catch (err) { alert('Error de conexión.'); }
     }
 
     // =============================================================
@@ -462,12 +634,12 @@
         if (!tbody) return;
 
         // Traemos usuarios (para nombres) y operarios de recolección libres.
-        try { cacheUsuarios = await (await fetch(API_USUARIOS + '/usuarios')).json(); } catch (e) { cacheUsuarios = []; }
+        try { cacheUsuarios = await (await fetchGet(API_USUARIOS + '/usuarios')).json(); } catch (e) { cacheUsuarios = []; }
         let libres = [];
-        try { libres = await (await fetch(API_USUARIOS + '/operarios-libres')).json(); } catch (e) { libres = []; }
+        try { libres = await (await fetchGet(API_USUARIOS + '/operarios-libres')).json(); } catch (e) { libres = []; }
 
         try {
-            const resp = await fetch(API_USUARIOS + '/cuadrillas');
+            const resp = await fetchGet(API_USUARIOS + '/cuadrillas');
             cacheCuadrillas = await resp.json();
 
             // Filtro: si venimos de un click en camión, mostramos solo esa cuadrilla.
@@ -534,7 +706,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ cuadrillaId: cuadrillaId, operarioId: parseInt(operarioId) }),
             });
-            if (resp.ok) cargarCuadrillas();
+            if (resp.ok) recargarSeccionActual();
             else { const r = await resp.json(); alert(r.error || 'No se pudo agregar.'); }
         } catch (err) { alert('Error de conexión.'); }
     }
@@ -547,7 +719,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ cuadrillaId: cuadrillaId, operarioId: operarioId }),
             });
-            if (resp.ok) cargarCuadrillas();
+            if (resp.ok) recargarSeccionActual();
             else { const r = await resp.json(); alert(r.error || 'No se pudo quitar.'); }
         } catch (err) { alert('Error de conexión.'); }
     }
@@ -575,7 +747,7 @@
             const resultado = await resp.json();
             if (resp.ok) {
                 msg.textContent = 'Cuadrilla creada.'; msg.classList.add('ok');
-                e.target.reset(); cargarCuadrillas();
+                e.target.reset(); recargarSeccionActual();
             } else {
                 msg.textContent = resultado.error; msg.classList.add('err');
             }
@@ -592,7 +764,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: id }),
             });
-            if (resp.ok) cargarCuadrillas();
+            if (resp.ok) recargarSeccionActual();
             else { const r = await resp.json(); alert(r.error || 'No se pudo eliminar.'); }
         } catch (err) { alert('Error de conexión.'); }
     }
@@ -612,7 +784,7 @@
     // Carga los selects de flota y cuadrilla del formulario de camión.
     async function cargarFlotasEnSelect() {
         try {
-            const resp = await fetch(API_RECOLECCION + '/flotas');
+            const resp = await fetchGet(API_RECOLECCION + '/flotas');
             cacheFlotas = await resp.json();
         } catch (err) { cacheFlotas = []; }
         const sel = document.getElementById('k-flota');
@@ -625,7 +797,7 @@
     }
     async function cargarCuadrillasEnSelect() {
         try {
-            const resp = await fetch(API_USUARIOS + '/cuadrillas');
+            const resp = await fetchGet(API_USUARIOS + '/cuadrillas');
             cacheCuadrillas = await resp.json();
         } catch (err) { cacheCuadrillas = []; }
         const sel = document.getElementById('k-cuadrilla');
@@ -643,15 +815,20 @@
     async function cargarCamiones() {
         const tbody = document.getElementById('tabla-camiones');
         // Aseguramos tener flotas y cuadrillas en cache para mostrar nombres.
-        if (cacheFlotas.length === 0) { try { cacheFlotas = await (await fetch(API_RECOLECCION + '/flotas')).json(); } catch (e) {} }
-        if (cacheCuadrillas.length === 0) { try { cacheCuadrillas = await (await fetch(API_USUARIOS + '/cuadrillas')).json(); } catch (e) {} }
+        if (cacheFlotas.length === 0) { try { cacheFlotas = await (await fetchGet(API_RECOLECCION + '/flotas')).json(); } catch (e) {} }
+        if (cacheCuadrillas.length === 0) { try { cacheCuadrillas = await (await fetchGet(API_USUARIOS + '/cuadrillas')).json(); } catch (e) {} }
         try {
-            const resp = await fetch(API_RECOLECCION + '/camiones');
+            const resp = await fetchGet(API_RECOLECCION + '/camiones');
             const lista = await resp.json();
+            // Cuadrillas ya usadas por algún camión (para no repetir).
+            const usadas = lista.filter(function (x) { return x.cuadrillaId !== null && x.cuadrillaId !== undefined; })
+                                 .map(function (x) { return x.cuadrillaId; });
             tbody.innerHTML = lista.map(function (k) {
-                // Selector de cuadrilla en línea para asignar.
+                // Selector de cuadrilla: ofrece las libres + la propia del camión.
                 let opcCuad = '<option value="">(sin cuadrilla)</option>' +
-                    cacheCuadrillas.map(function (c) {
+                    cacheCuadrillas.filter(function (c) {
+                        return usadas.indexOf(c.id) === -1 || c.id === k.cuadrillaId;
+                    }).map(function (c) {
                         const sel = (c.id === k.cuadrillaId) ? ' selected' : '';
                         return '<option value="' + c.id + '"' + sel + '>' + c.nombre + '</option>';
                     }).join('');
@@ -697,7 +874,7 @@
             const resultado = await resp.json();
             if (resp.ok) {
                 msg.textContent = 'Camión agregado.'; msg.classList.add('ok');
-                e.target.reset(); cargarCamiones();
+                e.target.reset(); recargarSeccionActual();
             } else {
                 msg.textContent = resultado.error; msg.classList.add('err');
             }
@@ -713,7 +890,8 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: camionId, cuadrillaId: cuadrillaId || null }),
             });
-            if (!resp.ok) { const r = await resp.json(); alert(r.error || 'No se pudo asignar.'); }
+            if (resp.ok) { recargarSeccionActual(); }
+            else { const r = await resp.json(); alert(r.error || 'No se pudo asignar.'); }
         } catch (err) { alert('Error de conexión.'); }
     }
 
@@ -736,7 +914,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: id }),
             });
-            if (resp.ok) cargarCamiones();
+            if (resp.ok) recargarSeccionActual();
             else { const r = await resp.json(); alert(r.error || 'No se pudo eliminar.'); }
         } catch (err) { alert('Error de conexión.'); }
     }
@@ -761,7 +939,7 @@
             const resultado = await resp.json();
             if (resp.ok) {
                 msg.textContent = 'Flota creada.'; msg.classList.add('ok');
-                e.target.reset(); cargarPanelFlotas();
+                e.target.reset(); recargarSeccionActual();
             } else {
                 msg.textContent = resultado.error; msg.classList.add('err');
             }
@@ -778,9 +956,9 @@
         if (form) form.onsubmit = altaFlota;
 
         try {
-            cacheFlotas     = await (await fetch(API_RECOLECCION + '/flotas')).json();
-            cacheCuadrillas = await (await fetch(API_USUARIOS + '/cuadrillas')).json();
-            const camiones  = await (await fetch(API_RECOLECCION + '/camiones')).json();
+            cacheFlotas     = await (await fetchGet(API_RECOLECCION + '/flotas')).json();
+            cacheCuadrillas = await (await fetchGet(API_USUARIOS + '/cuadrillas')).json();
+            const camiones  = await (await fetchGet(API_RECOLECCION + '/camiones')).json();
 
             let html = cacheFlotas.map(function (f) {
                 const suyos = camiones.filter(function (k) { return k.flotaId === f.id; });
@@ -851,7 +1029,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: parseInt(camionId), flotaId: flotaId }),
             });
-            if (resp.ok) cargarPanelFlotas();
+            if (resp.ok) recargarSeccionActual();
             else { const r = await resp.json(); alert(r.error || 'No se pudo agregar.'); }
         } catch (err) { alert('Error de conexión.'); }
     }
@@ -876,10 +1054,14 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: id }),
             });
-            if (resp.ok) cargarPanelFlotas();
+            if (resp.ok) recargarSeccionActual();
             else { const r = await resp.json(); alert(r.error || 'No se pudo eliminar.'); }
         } catch (err) { alert('Error de conexión.'); }
     }
+
+    // Al abrir la página, intentamos restaurar una sesión guardada
+    // (para que un refresco no devuelva al login).
+    restaurarSesion();
 </script>
 </body>
 </html>

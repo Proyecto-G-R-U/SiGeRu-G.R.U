@@ -15,7 +15,7 @@
         "estado": "operativo",
         "disponibilidad": "disponible",
         "flotaId": 1,
-        "cuadrillaId": 2
+        "cuadrillaId": null
     },
     {
         "id": 3,
@@ -24,15 +24,6 @@
         "estado": "mantenimiento",
         "disponibilidad": "disponible",
         "flotaId": 2,
-        "cuadrillaId": 3
-    },
-    {
-        "id": 4,
-        "patente": "STP 7384",
-        "modelo": "Volvo FE",
-        "estado": "operativo",
-        "disponibilidad": "disponible",
-        "flotaId": 3,
         "cuadrillaId": null
     }
 ]

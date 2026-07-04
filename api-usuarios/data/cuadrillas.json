@@ -4,24 +4,7 @@
         "nombre": "Cuadrilla Norte",
         "zona": "Zona Norte",
         "operarios": [
-            3,
             2
-        ]
-    },
-    {
-        "id": 2,
-        "nombre": "Cuadrilla Sur",
-        "zona": "Zona Sur",
-        "operarios": [
-            4
-        ]
-    },
-    {
-        "id": 3,
-        "nombre": "Cuadrilla Este",
-        "zona": "Zona Este",
-        "operarios": [
-            5
         ]
     }
 ]

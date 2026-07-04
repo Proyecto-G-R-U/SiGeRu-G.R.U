@@ -79,14 +79,12 @@ class CamionController
         $cuadrillaId = isset($datos['cuadrillaId']) && $datos['cuadrillaId'] !== '' && $datos['cuadrillaId'] !== null
             ? (int)$datos['cuadrillaId'] : null;
 
-        $camion = $this->repo->buscarPorId($id);
-        if ($camion === null) {
+        // Exclusividad: la cuadrilla queda solo en este camión.
+        if (!$this->repo->asignarCuadrillaExclusiva($id, $cuadrillaId)) {
             $this->error('No existe un camión con ese id.', 404);
         }
 
-        $camion->setCuadrillaId($cuadrillaId);
-        $this->repo->actualizar($camion);
-
+        $camion = $this->repo->buscarPorId($id);
         $this->responder(['mensaje' => 'Cuadrilla asignada al camión.', 'camion' => $camion], 200);
     }
 

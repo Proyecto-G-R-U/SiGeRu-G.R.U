@@ -42,6 +42,10 @@ switch ($metodo . ' ' . $ruta) {
         $controller->crear();
         break;
 
+    case 'POST /contenedores/eliminar':
+        $controller->eliminar();
+        break;
+
     default:
         http_response_code(404);
         header('Content-Type: application/json; charset=utf-8');
