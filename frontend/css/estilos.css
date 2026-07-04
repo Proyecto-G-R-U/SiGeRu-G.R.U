@@ -176,3 +176,41 @@ html, body { height:100%; font-family:'Segoe UI', sans-serif; background:var(--b
 /* ---- Mensaje de error del mapa (si Leaflet no carga) ---- */
 .mapa-error { background:#fff3f3; border:1px solid #f0c0c0; color:#b71c1c; border-radius:var(--radius);
     padding:16px; font-size:13px; line-height:1.6; margin-top:6px; }
+
+/* ---- Botón editar ---- */
+.btn-editar { background:var(--primary); color:#fff; border:none; padding:6px 12px; border-radius:6px;
+    font-size:12px; font-weight:600; cursor:pointer; transition:background .15s; }
+.btn-editar:hover { background:var(--dark); }
+
+/* ---- MODAL DE EDICIÓN ---- */
+.modal-fondo { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1000;
+    display:flex; align-items:center; justify-content:center; padding:20px; }
+.modal-caja { background:var(--card); border-radius:14px; width:460px; max-width:94vw;
+    max-height:90vh; overflow-y:auto; box-shadow:0 24px 70px rgba(0,0,0,.35); padding:24px; }
+.modal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
+.modal-head h3 { font-size:18px; }
+.modal-cerrar { border:none; background:none; font-size:26px; line-height:1; cursor:pointer;
+    color:var(--muted); width:32px; height:32px; border-radius:8px; }
+.modal-cerrar:hover { background:var(--bg); }
+.form-modal { display:flex; flex-direction:column; }
+.form-modal label { font-size:11px; font-weight:700; text-transform:uppercase; color:var(--muted);
+    margin:12px 0 5px; }
+.form-modal input, .form-modal select { padding:10px 12px; border:1px solid var(--border);
+    border-radius:8px; font-size:14px; font-family:inherit; outline:none; background:var(--card); }
+.form-modal input:focus, .form-modal select:focus { border-color:var(--primary); }
+.form-modal .btn { margin-top:20px; }
+.form-modal .mapa { height:220px; }
+
+/* ---- LANDING INFORMATIVA DEL VECINO ---- */
+.landing-vecino { max-width:900px; }
+.lv-hero { background:var(--primary); color:#fff; border-radius:14px; padding:34px; margin-bottom:22px; }
+.lv-hero h2 { font-size:30px; font-weight:800; }
+.lv-sub { font-size:14px; opacity:.9; margin-top:2px; }
+.lv-intro { font-size:14px; line-height:1.7; margin-top:16px; max-width:640px; opacity:.95; }
+.lv-cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:22px; }
+.lv-card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px; }
+.lv-card .material-icons-outlined { font-size:34px; color:var(--primary); }
+.lv-card h3 { font-size:15px; margin:10px 0 6px; }
+.lv-card p { font-size:12.5px; color:var(--muted); line-height:1.6; }
+.lv-footer { background:var(--card); border:1px solid var(--border); border-radius:12px;
+    padding:18px; text-align:center; font-size:14px; font-weight:600; color:var(--primary); }

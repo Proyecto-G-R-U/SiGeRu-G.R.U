@@ -77,6 +77,10 @@ switch ($metodo . ' ' . $ruta) {
         $controller->eliminar();
         break;
 
+    case 'POST /usuarios/modificar':
+        $controller->modificar();
+        break;
+
     case 'GET /cuadrillas':
         $cuadrillaCtrl->listar();
         break;

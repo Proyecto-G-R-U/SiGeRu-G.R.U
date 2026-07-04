@@ -68,6 +68,18 @@
     </div>
 </div>
 
+<!-- ===== MODAL DE EDICIÓN (reutilizable) ===== -->
+<div id="modal-editar" class="modal-fondo oculto">
+    <div class="modal-caja">
+        <div class="modal-head">
+            <h3 id="modal-titulo">Editar</h3>
+            <button class="modal-cerrar" onclick="cerrarModal()">&times;</button>
+        </div>
+        <div id="modal-cuerpo"></div>
+        <p class="msg" id="modal-msg"></p>
+    </div>
+</div>
+
 <!-- ============================================================
      JAVASCRIPT EMBEBIDO
      ============================================================ -->
@@ -247,14 +259,17 @@
         const content = document.getElementById('content');
 
         if (id === 'inicio') {
-            // Los no-administradores ven su panel vacío (solo bienvenida),
-            // porque por ahora solo el admin tiene funciones.
-            content.innerHTML = '<div class="bienvenida"><h2>Hola, ' +
-                usuarioActual.nombre + '</h2><p>Bienvenido a tu panel. ' +
-                (rolEfectivo(usuarioActual) === 'administrador'
-                    ? 'Usá el menú lateral para gestionar usuarios, contenedores y camiones.'
-                    : 'Por el momento este panel es informativo.') +
-                '</p></div>';
+            const rol = rolEfectivo(usuarioActual);
+            if (rol === 'vecino') {
+                content.innerHTML = landingVecino();
+            } else if (rol === 'administrador') {
+                content.innerHTML = '<div class="bienvenida"><h2>Hola, ' + usuarioActual.nombre +
+                    '</h2><p>Bienvenido al panel administrativo. Usá el menú lateral para gestionar ' +
+                    'usuarios, contenedores, camiones y flotas.</p></div>';
+            } else {
+                content.innerHTML = '<div class="bienvenida"><h2>Hola, ' + usuarioActual.nombre +
+                    '</h2><p>Bienvenido a tu panel. Por el momento este panel es informativo.</p></div>';
+            }
             return;
         }
 
@@ -278,6 +293,42 @@
     // =============================================================
     //  PLANTILLAS DE SECCIÓN (solo admin)
     // =============================================================
+
+    // Contenido informativo de G.R.U que ve el vecino en su Inicio.
+    function landingVecino() {
+        return ''
+        + '<div class="landing-vecino">'
+        + '  <div class="lv-hero">'
+        + '    <h2>Bienvenido a G.R.U</h2>'
+        + '    <p class="lv-sub">Gestión de Residuos Urbanos</p>'
+        + '    <p class="lv-intro">G.R.U es el sistema municipal que coordina la recolección, '
+        + '    clasificación y disposición de los residuos de la ciudad. Como vecino, sos una '
+        + '    parte fundamental para mantener limpio y sano nuestro entorno.</p>'
+        + '  </div>'
+        + '  <div class="lv-cards">'
+        + '    <div class="lv-card"><span class="material-icons-outlined">recycling</span>'
+        + '      <h3>Reciclá bien</h3>'
+        + '      <p>Separá tus residuos en reciclables y mezclados. Cada contenedor tiene su tipo, '
+        + '      identificado por color y etiqueta.</p></div>'
+        + '    <div class="lv-card"><span class="material-icons-outlined">place</span>'
+        + '      <h3>Contenedores cerca tuyo</h3>'
+        + '      <p>El sistema mapea todos los contenedores de la ciudad con su ubicación exacta '
+        + '      y su estado actual.</p></div>'
+        + '    <div class="lv-card"><span class="material-icons-outlined">local_shipping</span>'
+        + '      <h3>Recolección organizada</h3>'
+        + '      <p>Cuadrillas y camiones trabajan coordinadamente para que la recolección sea '
+        + '      eficiente en cada zona.</p></div>'
+        + '    <div class="lv-card"><span class="material-icons-outlined">report_problem</span>'
+        + '      <h3>Reportá problemas</h3>'
+        + '      <p>Pronto vas a poder avisar sobre contenedores desbordados o dañados directamente '
+        + '      desde acá.</p></div>'
+        + '  </div>'
+        + '  <div class="lv-footer">'
+        + '    <p>Juntos hacemos una ciudad más limpia.</p>'
+        + '  </div>'
+        + '</div>';
+    }
+
     function plantillaUsuarios() {
         return ''
         + '<div class="panel"><h3>Nuevo usuario</h3>'
@@ -386,9 +437,9 @@
             const resp = await fetchGet(API_USUARIOS + '/usuarios');
             const usuarios = await resp.json();
             tbody.innerHTML = usuarios.map(function (u) {
-                let accion = '—';
+                let accion = '<button class="btn-editar" onclick="editarUsuario(' + u.id + ')">Editar</button>';
                 if (esAdmin && u.id !== usuarioActual.id) {
-                    accion = '<button class="btn-eliminar" onclick="eliminarUsuario(' +
+                    accion += ' <button class="btn-eliminar" onclick="eliminarUsuario(' +
                         u.id + ", '" + u.nombre.replace(/'/g, "\\'") + "')" + '">Eliminar</button>';
                 }
                 // Mostramos rol + especialidad si es operario
@@ -552,6 +603,7 @@
                 tbody.innerHTML = lista.map(function (c) {
                     return '<tr><td>' + c.id + '</td><td>' + c.codigo + '</td><td>' +
                         c.direccion + '</td><td>' + c.tipoResiduo + '</td><td>' + c.estado + '</td><td>' +
+                        '<button class="btn-editar" onclick="editarContenedor(' + c.id + ')">Editar</button> ' +
                         '<button class="btn-eliminar" onclick="eliminarContenedor(' + c.id + ')">Eliminar</button>' +
                         '</td></tr>';
                 }).join('');
@@ -843,6 +895,7 @@
                 return '<tr><td>' + k.id + '</td><td>' + k.patente + '</td><td>' +
                     k.modelo + '</td><td>' + k.estado + '</td><td>' + k.disponibilidad + '</td><td>' +
                     selectFlota + '</td><td>' + selectCuad + '</td><td>' +
+                    '<button class="btn-editar" onclick="editarCamion(' + k.id + ')">Editar</button> ' +
                     '<button class="btn-eliminar" onclick="eliminarCamion(' + k.id + ')">Eliminar</button>' +
                     '</td></tr>';
             }).join('');
@@ -1057,6 +1110,178 @@
             if (resp.ok) recargarSeccionActual();
             else { const r = await resp.json(); alert(r.error || 'No se pudo eliminar.'); }
         } catch (err) { alert('Error de conexión.'); }
+    }
+
+    // =============================================================
+    //  MODAL DE EDICIÓN (reutilizable)
+    // =============================================================
+    function abrirModal(titulo, htmlCuerpo, onGuardar) {
+        document.getElementById('modal-titulo').textContent = titulo;
+        document.getElementById('modal-cuerpo').innerHTML = htmlCuerpo;
+        document.getElementById('modal-msg').textContent = '';
+        document.getElementById('modal-msg').className = 'msg';
+        document.getElementById('modal-editar').classList.remove('oculto');
+        // El botón "Guardar" del cuerpo llama a la función que pasamos.
+        const btn = document.getElementById('modal-guardar');
+        if (btn) btn.onclick = onGuardar;
+    }
+
+    function cerrarModal() {
+        document.getElementById('modal-editar').classList.add('oculto');
+    }
+
+    function modalError(texto) {
+        const m = document.getElementById('modal-msg');
+        m.textContent = texto; m.className = 'msg err';
+    }
+
+    // -------- EDITAR USUARIO --------
+    function editarUsuario(id) {
+        const u = cacheUsuarios.find(function (x) { return x.id === id; });
+        if (!u) return;
+        const esOperario = u.rol === 'operario';
+        const cuerpo =
+            '<div class="form-modal">'
+            + '<label>Nombre</label><input type="text" id="e-nombre" value="' + (u.nombre || '') + '">'
+            + '<label>Email</label><input type="email" id="e-email" value="' + (u.email || '') + '">'
+            + '<label>Contraseña (dejar vacío para no cambiarla)</label><input type="password" id="e-password" placeholder="••••••">'
+            + '<label>Rol</label><select id="e-rol" onchange="toggleEspecialidadEdit()">'
+            + '<option value="vecino"' + (u.rol === 'vecino' ? ' selected' : '') + '>Vecino</option>'
+            + '<option value="operario"' + (u.rol === 'operario' ? ' selected' : '') + '>Operario</option>'
+            + '<option value="administrador"' + (u.rol === 'administrador' ? ' selected' : '') + '>Administrador</option>'
+            + '</select>'
+            + '<div id="e-wrap-esp" style="' + (esOperario ? '' : 'display:none;') + '">'
+            + '<label>Especialidad</label><select id="e-especialidad">'
+            + '<option value="recoleccion"' + (u.especialidad === 'recoleccion' ? ' selected' : '') + '>Recolección</option>'
+            + '<option value="clasificacion"' + (u.especialidad === 'clasificacion' ? ' selected' : '') + '>Clasificación</option>'
+            + '<option value="vertedero"' + (u.especialidad === 'vertedero' ? ' selected' : '') + '>Vertedero</option>'
+            + '</select></div>'
+            + '<button class="btn" id="modal-guardar">Guardar cambios</button></div>';
+
+        abrirModal('Editar usuario', cuerpo, async function () {
+            const datos = {
+                id: id,
+                nombre: document.getElementById('e-nombre').value.trim(),
+                email: document.getElementById('e-email').value.trim(),
+                password: document.getElementById('e-password').value,
+                rol: document.getElementById('e-rol').value,
+            };
+            if (datos.rol === 'operario') datos.especialidad = document.getElementById('e-especialidad').value;
+            try {
+                const resp = await fetch(API_USUARIOS + '/usuarios/modificar', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(datos),
+                });
+                const r = await resp.json();
+                if (resp.ok) { cerrarModal(); recargarSeccionActual(); }
+                else modalError(r.error || 'No se pudo modificar.');
+            } catch (e) { modalError('Error de conexión.'); }
+        });
+    }
+    function toggleEspecialidadEdit() {
+        const rol = document.getElementById('e-rol').value;
+        document.getElementById('e-wrap-esp').style.display = (rol === 'operario') ? 'block' : 'none';
+    }
+
+    // -------- EDITAR CONTENEDOR --------
+    let modalMapa = null, modalMarcador = null, modalCoord = { lat: null, lng: null };
+    function editarContenedor(id) {
+        // Buscamos el contenedor en la última lista cargada.
+        fetchGet(API_GESTION + '/contenedores').then(function (resp) { return resp.json(); }).then(function (lista) {
+            const c = lista.find(function (x) { return x.id === id; });
+            if (!c) return;
+            modalCoord = { lat: c.lat, lng: c.lng };
+            const cuerpo =
+                '<div class="form-modal">'
+                + '<label>Código</label><input type="text" id="e-codigo" value="' + (c.codigo || '') + '">'
+                + '<label>Dirección</label><input type="text" id="e-direccion" value="' + (c.direccion || '') + '">'
+                + '<label>Tipo de residuo</label><select id="e-tipo">'
+                + '<option value="mezclado"' + (c.tipoResiduo === 'mezclado' ? ' selected' : '') + '>Mezclado</option>'
+                + '<option value="reciclable"' + (c.tipoResiduo === 'reciclable' ? ' selected' : '') + '>Reciclable</option></select>'
+                + '<label>Estado</label><select id="e-estado">'
+                + '<option value="operativo"' + (c.estado === 'operativo' ? ' selected' : '') + '>Operativo</option>'
+                + '<option value="roto"' + (c.estado === 'roto' ? ' selected' : '') + '>Roto</option>'
+                + '<option value="desbordado"' + (c.estado === 'desbordado' ? ' selected' : '') + '>Desbordado</option></select>'
+                + '<label>Ubicación (click en el mapa para cambiarla)</label>'
+                + '<div id="modal-mapa" class="mapa"></div>'
+                + '<p class="mapa-coord" id="e-coord">Ubicación actual: ' + c.lat + ', ' + c.lng + '</p>'
+                + '<button class="btn" id="modal-guardar">Guardar cambios</button></div>';
+
+            abrirModal('Editar contenedor', cuerpo, async function () {
+                const datos = {
+                    id: id,
+                    codigo: document.getElementById('e-codigo').value.trim(),
+                    direccion: document.getElementById('e-direccion').value.trim(),
+                    tipoResiduo: document.getElementById('e-tipo').value,
+                    estado: document.getElementById('e-estado').value,
+                    lat: modalCoord.lat, lng: modalCoord.lng,
+                };
+                try {
+                    const resp = await fetch(API_GESTION + '/contenedores/modificar', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(datos),
+                    });
+                    const r = await resp.json();
+                    if (resp.ok) { cerrarModal(); refrescarContenedores(); }
+                    else modalError(r.error || 'No se pudo modificar.');
+                } catch (e) { modalError('Error de conexión.'); }
+            });
+
+            // Mini-mapa dentro del modal para reubicar.
+            if (typeof L !== 'undefined') {
+                setTimeout(function () {
+                    modalMapa = L.map('modal-mapa').setView([c.lat || MVD[0], c.lng || MVD[1]], 13);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(modalMapa);
+                    if (c.lat && c.lng) modalMarcador = L.marker([c.lat, c.lng]).addTo(modalMapa);
+                    modalMapa.on('click', function (e) {
+                        modalCoord.lat = e.latlng.lat; modalCoord.lng = e.latlng.lng;
+                        if (modalMarcador) modalMarcador.setLatLng(e.latlng);
+                        else modalMarcador = L.marker(e.latlng).addTo(modalMapa);
+                        document.getElementById('e-coord').textContent =
+                            'Nueva ubicación: ' + e.latlng.lat.toFixed(5) + ', ' + e.latlng.lng.toFixed(5);
+                    });
+                    setTimeout(function () { modalMapa.invalidateSize(); }, 200);
+                }, 100);
+            }
+        });
+    }
+
+    // -------- EDITAR CAMIÓN --------
+    function editarCamion(id) {
+        fetchGet(API_RECOLECCION + '/camiones').then(function (resp) { return resp.json(); }).then(function (lista) {
+            const k = lista.find(function (x) { return x.id === id; });
+            if (!k) return;
+            const cuerpo =
+                '<div class="form-modal">'
+                + '<label>Patente</label><input type="text" id="e-patente" value="' + (k.patente || '') + '">'
+                + '<label>Modelo</label><input type="text" id="e-modelo" value="' + (k.modelo || '') + '">'
+                + '<label>Estado</label><select id="e-kestado">'
+                + '<option value="operativo"' + (k.estado === 'operativo' ? ' selected' : '') + '>Operativo</option>'
+                + '<option value="mantenimiento"' + (k.estado === 'mantenimiento' ? ' selected' : '') + '>Mantenimiento</option></select>'
+                + '<label>Disponibilidad</label><select id="e-kdisp">'
+                + '<option value="disponible"' + (k.disponibilidad === 'disponible' ? ' selected' : '') + '>Disponible</option>'
+                + '<option value="en_ruta"' + (k.disponibilidad === 'en_ruta' ? ' selected' : '') + '>En ruta</option></select>'
+                + '<button class="btn" id="modal-guardar">Guardar cambios</button></div>';
+
+            abrirModal('Editar camión', cuerpo, async function () {
+                const datos = {
+                    id: id,
+                    patente: document.getElementById('e-patente').value.trim(),
+                    modelo: document.getElementById('e-modelo').value.trim(),
+                    estado: document.getElementById('e-kestado').value,
+                    disponibilidad: document.getElementById('e-kdisp').value,
+                };
+                try {
+                    const resp = await fetch(API_RECOLECCION + '/camiones/modificar', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(datos),
+                    });
+                    const r = await resp.json();
+                    if (resp.ok) { cerrarModal(); recargarSeccionActual(); }
+                    else modalError(r.error || 'No se pudo modificar.');
+                } catch (e) { modalError('Error de conexión.'); }
+            });
+        });
     }
 
     // Al abrir la página, intentamos restaurar una sesión guardada

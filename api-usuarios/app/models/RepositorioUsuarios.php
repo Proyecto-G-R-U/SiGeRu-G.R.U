@@ -162,6 +162,34 @@ class RepositorioUsuarios
     }
 
     /**
+     * Actualiza un usuario existente (por id). Si viene un hash nuevo lo
+     * reemplaza; si no, conserva el que ya tenía (para no perder la contraseña
+     * cuando el admin edita sin cambiarla). Devuelve true si existía.
+     */
+    public function actualizar(Usuario $usuario, ?string $hashNuevo = null): bool
+    {
+        $filas = $this->leerCrudo();
+        $encontrado = false;
+        foreach ($filas as $i => $f) {
+            if ((int)$f['id'] === $usuario->getId()) {
+                $nueva = $this->aFila($usuario);
+                // Conservar el hash anterior si no se cambió la contraseña.
+                if ($hashNuevo === null || $hashNuevo === '') {
+                    $nueva['passwordHash'] = $f['passwordHash'];
+                }
+                $filas[$i] = $nueva;
+                $encontrado = true;
+                break;
+            }
+        }
+        if (!$encontrado) {
+            return false;
+        }
+        $this->guardarCrudo($filas);
+        return true;
+    }
+
+    /**
      * Elimina un usuario por id. Devuelve true si lo encontró y borró,
      * false si no existía. Persiste el archivo tras borrar.
      */

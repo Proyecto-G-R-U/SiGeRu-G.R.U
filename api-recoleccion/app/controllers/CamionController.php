@@ -69,6 +69,43 @@ class CamionController
     }
 
     /**
+     * POST /camiones/modificar — edita los datos básicos de un camión.
+     * Recibe { id, patente, modelo, estado, disponibilidad }.
+     * Conserva la flota y la cuadrilla que ya tenía asignadas.
+     */
+    public function modificar(): void
+    {
+        $datos = $this->leerJson();
+        $id             = (int)($datos['id'] ?? 0);
+        $patente        = trim($datos['patente'] ?? '');
+        $modelo         = trim($datos['modelo'] ?? '');
+        $estado         = $datos['estado'] ?? 'operativo';
+        $disponibilidad = $datos['disponibilidad'] ?? 'disponible';
+
+        if ($id <= 0) {
+            $this->error('Falta el id del camión.', 400);
+        }
+        if ($patente === '' || $modelo === '') {
+            $this->error('Patente y modelo son obligatorios.', 400);
+        }
+
+        $existente = $this->repo->buscarPorId($id);
+        if ($existente === null) {
+            $this->error('No existe un camión con ese id.', 404);
+        }
+
+        // Conservamos flota y cuadrilla actuales (se cambian con sus propios selectores).
+        $camion = new Camion(
+            $id, $patente, $modelo, $estado, $disponibilidad,
+            $existente->getFlotaId(),
+            $existente->getCuadrillaId()
+        );
+        $this->repo->actualizar($camion);
+
+        $this->responder(['mensaje' => 'Camión modificado correctamente.', 'camion' => $camion], 200);
+    }
+
+    /**
      * POST /camiones/asignar-cuadrilla — asigna (o quita) la cuadrilla de un
      * camión. Recibe { id, cuadrillaId }. cuadrillaId null quita la asignación.
      */

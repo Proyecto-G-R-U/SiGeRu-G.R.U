@@ -1,56 +1,20 @@
 [
     {
         "id": 1,
-        "nombre": "Carlos Rodríguez",
+        "nombre": "Facundo Oramas",
         "email": "admin@sigeru.uy",
-        "passwordHash": "$2y$10$FQpaXQ6e1HCyDE9MKobBoeR4Gbc5BytJZhCziMzstNZDe\/W9HR2lK",
+        "passwordHash": "$2y$10$kr8pqCOiZ1Xhcbd4N2DON.KtkNEfGm0rrz40OEYQTcEZTUD1VQlAG",
         "rol": "administrador",
         "especialidad": null,
         "cuadrilla": null
     },
     {
         "id": 2,
-        "nombre": "Marta Pérez",
-        "email": "recoleccion@sigeru.uy",
-        "passwordHash": "$2y$10$FQpaXQ6e1HCyDE9MKobBoeR4Gbc5BytJZhCziMzstNZDe\/W9HR2lK",
-        "rol": "operario",
-        "especialidad": "recoleccion",
-        "cuadrilla": "Cuadrilla Norte"
-    },
-    {
-        "id": 3,
-        "nombre": "Julián Fernández",
-        "email": "clasificacion@sigeru.uy",
-        "passwordHash": "$2y$10$FQpaXQ6e1HCyDE9MKobBoeR4Gbc5BytJZhCziMzstNZDe\/W9HR2lK",
-        "rol": "operario",
-        "especialidad": "clasificacion",
-        "cuadrilla": null
-    },
-    {
-        "id": 4,
-        "nombre": "Ana Silva",
-        "email": "vertedero@sigeru.uy",
-        "passwordHash": "$2y$10$FQpaXQ6e1HCyDE9MKobBoeR4Gbc5BytJZhCziMzstNZDe\/W9HR2lK",
-        "rol": "operario",
-        "especialidad": "vertedero",
-        "cuadrilla": null
-    },
-    {
-        "id": 5,
-        "nombre": "Vecino de Prueba",
-        "email": "vecino@gmail.com",
-        "passwordHash": "$2y$10$FQpaXQ6e1HCyDE9MKobBoeR4Gbc5BytJZhCziMzstNZDe\/W9HR2lK",
-        "rol": "vecino",
-        "especialidad": null,
-        "cuadrilla": null
-    },
-    {
-        "id": 6,
         "nombre": "pepe",
         "email": "pepe@gmail.com",
-        "passwordHash": "$2y$10$P6GrUgRIZGxpwoWMEL6ZceN\/VVhRN0Nr.QiEC7YxrF6x6UEqZuBh6",
-        "rol": "operario",
-        "especialidad": "recoleccion",
+        "passwordHash": "$2y$10$ze1T78cp\/FEWAPnxDPo7.Owa\/vNdMGShksGlnMGEbPecDIXnVY7DO",
+        "rol": "vecino",
+        "especialidad": null,
         "cuadrilla": null
     }
 ]

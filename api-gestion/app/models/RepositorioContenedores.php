@@ -99,6 +99,25 @@ class RepositorioContenedores
         $this->guardarCrudo($filas);
     }
 
+    /** Actualiza un contenedor existente (por id). Devuelve true si existía. */
+    public function actualizar(Contenedor $c): bool
+    {
+        $filas = $this->leerCrudo();
+        $encontrado = false;
+        foreach ($filas as $i => $f) {
+            if ((int)$f['id'] === $c->getId()) {
+                $filas[$i] = $this->aFila($c);
+                $encontrado = true;
+                break;
+            }
+        }
+        if (!$encontrado) {
+            return false;
+        }
+        $this->guardarCrudo($filas);
+        return true;
+    }
+
     public function eliminar(int $id): bool
     {
         $filas = $this->leerCrudo();

@@ -25,14 +25,5 @@
         "estado": "operativo",
         "lat": -34.9095,
         "lng": -56.152
-    },
-    {
-        "id": 4,
-        "codigo": "CNT-100",
-        "direccion": "Geminis",
-        "tipoResiduo": "mezclado",
-        "estado": "operativo",
-        "lat": -34.83278785077747,
-        "lng": -56.10916793346406
     }
 ]

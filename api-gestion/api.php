@@ -46,6 +46,10 @@ switch ($metodo . ' ' . $ruta) {
         $controller->eliminar();
         break;
 
+    case 'POST /contenedores/modificar':
+        $controller->modificar();
+        break;
+
     default:
         http_response_code(404);
         header('Content-Type: application/json; charset=utf-8');

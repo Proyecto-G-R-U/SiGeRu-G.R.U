@@ -147,6 +147,59 @@ class UsuarioController
         };
     }
 
+    /**
+     * POST /usuarios/modificar — edita un usuario existente.
+     * Recibe { id, nombre, email, rol, especialidad?, password? }.
+     * Si password viene vacío, se conserva la contraseña actual.
+     */
+    public function modificar(): void
+    {
+        $datos = $this->leerJson();
+        $id       = (int)($datos['id'] ?? 0);
+        $nombre   = trim($datos['nombre'] ?? '');
+        $email    = trim($datos['email'] ?? '');
+        $rol      = $datos['rol'] ?? 'vecino';
+        $password = $datos['password'] ?? '';
+
+        if ($id <= 0) {
+            $this->error('Falta el id del usuario.', 400);
+        }
+        if ($nombre === '' || $email === '') {
+            $this->error('Nombre y email son obligatorios.', 400);
+        }
+
+        $existente = $this->repo->buscarPorId($id);
+        if ($existente === null) {
+            $this->error('No existe un usuario con ese id.', 404);
+        }
+
+        // Si cambia el email, verificar que no choque con otro usuario.
+        $otro = $this->repo->buscarPorEmail($email);
+        if ($otro !== null && $otro->getId() !== $id) {
+            $this->error('Ya existe otro usuario con ese email.', 409);
+        }
+
+        // Hash nuevo solo si el admin escribió una contraseña.
+        $hashNuevo = $password !== '' ? password_hash($password, PASSWORD_DEFAULT) : null;
+        // Para reconstruir el objeto necesitamos un hash; si no cambia, usamos
+        // el actual (el repositorio igual conserva el viejo al persistir).
+        $hashParaObjeto = $hashNuevo ?? $existente->getPasswordHash();
+
+        $usuario = match ($rol) {
+            'administrador' => new Administrador($id, $nombre, $email, $hashParaObjeto),
+            'operario'      => $this->crearOperario(
+                $id, $nombre, $email, $hashParaObjeto,
+                $datos['especialidad'] ?? 'recoleccion',
+                $datos['cuadrilla'] ?? null
+            ),
+            default         => new Vecino($id, $nombre, $email, $hashParaObjeto),
+        };
+
+        $this->repo->actualizar($usuario, $hashNuevo);
+
+        $this->responder(['mensaje' => 'Usuario modificado correctamente.', 'usuario' => $usuario], 200);
+    }
+
     /** Lee y decodifica el cuerpo JSON del pedido. */
     private function leerJson(): array
     {

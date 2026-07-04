@@ -53,6 +53,10 @@ switch ($metodo . ' ' . $ruta) {
         $camionCtrl->eliminar();
         break;
 
+    case 'POST /camiones/modificar':
+        $camionCtrl->modificar();
+        break;
+
     case 'POST /camiones/asignar-cuadrilla':
         $camionCtrl->asignarCuadrilla();
         break;

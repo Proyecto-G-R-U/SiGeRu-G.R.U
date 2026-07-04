@@ -70,6 +70,39 @@ class ContenedorController
         $this->responder(['mensaje' => 'Contenedor eliminado.'], 200);
     }
 
+    /**
+     * POST /contenedores/modificar — edita un contenedor.
+     * Recibe { id, codigo, direccion, tipoResiduo, estado, lat, lng }.
+     */
+    public function modificar(): void
+    {
+        $datos = $this->leerJson();
+        $id          = (int)($datos['id'] ?? 0);
+        $codigo      = trim($datos['codigo'] ?? '');
+        $direccion   = trim($datos['direccion'] ?? '');
+        $tipoResiduo = $datos['tipoResiduo'] ?? 'mezclado';
+        $estado      = $datos['estado'] ?? 'operativo';
+        $lat = isset($datos['lat']) && $datos['lat'] !== '' && $datos['lat'] !== null ? (float)$datos['lat'] : null;
+        $lng = isset($datos['lng']) && $datos['lng'] !== '' && $datos['lng'] !== null ? (float)$datos['lng'] : null;
+
+        if ($id <= 0) {
+            $this->error('Falta el id del contenedor.', 400);
+        }
+        if ($codigo === '' || $direccion === '') {
+            $this->error('Código y dirección son obligatorios.', 400);
+        }
+        if ($lat === null || $lng === null) {
+            $this->error('Marcá la ubicación del contenedor en el mapa.', 400);
+        }
+
+        $contenedor = new Contenedor($id, $codigo, $direccion, $tipoResiduo, $estado, $lat, $lng);
+        if (!$this->repo->actualizar($contenedor)) {
+            $this->error('No existe un contenedor con ese id.', 404);
+        }
+
+        $this->responder(['mensaje' => 'Contenedor modificado correctamente.', 'contenedor' => $contenedor], 200);
+    }
+
     private function leerJson(): array
     {
         $cuerpo = file_get_contents('php://input');
