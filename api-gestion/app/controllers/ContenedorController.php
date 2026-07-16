@@ -12,7 +12,7 @@ use App\Models\Contenedor;
  *   crear()    -> POST /contenedores
  *   eliminar() -> POST /contenedores/eliminar
  */
-class ContenedorController
+class ContenedorController extends ControladorBase
 {
     private RepositorioContenedores $repo;
 
@@ -103,23 +103,4 @@ class ContenedorController
         $this->responder(['mensaje' => 'Contenedor modificado correctamente.', 'contenedor' => $contenedor], 200);
     }
 
-    private function leerJson(): array
-    {
-        $cuerpo = file_get_contents('php://input');
-        $datos = json_decode($cuerpo, true);
-        return is_array($datos) ? $datos : [];
-    }
-
-    private function responder(mixed $datos, int $codigo = 200): void
-    {
-        http_response_code($codigo);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode($datos, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-        exit;
-    }
-
-    private function error(string $mensaje, int $codigo = 400): void
-    {
-        $this->responder(['error' => $mensaje], $codigo);
-    }
 }

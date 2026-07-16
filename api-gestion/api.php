@@ -6,8 +6,10 @@ declare(strict_types=1);
  * Levantar con:  php -S localhost:9001 api.php   (desde la carpeta api-gestion/)
  */
 
+require __DIR__ . '/app/models/RepositorioJson.php';
 require __DIR__ . '/app/models/Contenedor.php';
 require __DIR__ . '/app/models/RepositorioContenedores.php';
+require __DIR__ . '/app/controllers/ControladorBase.php';
 require __DIR__ . '/app/controllers/ContenedorController.php';
 
 use App\Models\RepositorioContenedores;

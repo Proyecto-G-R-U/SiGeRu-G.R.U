@@ -18,7 +18,7 @@ use App\Models\Vecino;
  * cuenta (con los helpers privados responder() y error() de más abajo),
  * en lugar de usar una clase Respuesta separada.
  */
-class UsuarioController
+class UsuarioController extends ControladorBase
 {
     private RepositorioUsuarios $repo;
 
@@ -132,8 +132,6 @@ class UsuarioController
         $this->responder(['mensaje' => 'Usuario eliminado correctamente.'], 200);
     }
 
-    // ---------------- Helpers internos ----------------
-
     /**
      * Crea la subclase de Operario correcta según la especialidad.
      * Centraliza la decisión en un solo lugar (fábrica simple).
@@ -200,26 +198,4 @@ class UsuarioController
         $this->responder(['mensaje' => 'Usuario modificado correctamente.', 'usuario' => $usuario], 200);
     }
 
-    /** Lee y decodifica el cuerpo JSON del pedido. */
-    private function leerJson(): array
-    {
-        $cuerpo = file_get_contents('php://input');
-        $datos = json_decode($cuerpo, true);
-        return is_array($datos) ? $datos : [];
-    }
-
-    /** Responde JSON con un código de estado y corta la ejecución. */
-    private function responder(mixed $datos, int $codigo = 200): void
-    {
-        http_response_code($codigo);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode($datos, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-        exit;
-    }
-
-    /** Atajo para responder un error. */
-    private function error(string $mensaje, int $codigo = 400): void
-    {
-        $this->responder(['error' => $mensaje], $codigo);
-    }
 }

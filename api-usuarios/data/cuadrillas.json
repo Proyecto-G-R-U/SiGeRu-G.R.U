@@ -3,6 +3,8 @@
         "id": 1,
         "nombre": "Cuadrilla Norte",
         "zona": "Zona Norte",
-        "operarios": []
+        "operarios": [
+            2
+        ]
     }
 ]

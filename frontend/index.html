@@ -827,11 +827,6 @@
         const c = cacheCuadrillas.find(function (x) { return x.id === id; });
         return c ? c.nombre : ('#' + id);
     }
-    function nombreFlota(id) {
-        if (id === null || id === undefined) return '—';
-        const f = cacheFlotas.find(function (x) { return x.id === id; });
-        return f ? f.nombre : ('#' + id);
-    }
 
     // Carga los selects de flota y cuadrilla del formulario de camión.
     async function cargarFlotasEnSelect() {

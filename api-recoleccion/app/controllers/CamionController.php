@@ -13,7 +13,7 @@ use App\Models\Camion;
  *   eliminar()        -> POST /camiones/eliminar
  *   asignarCuadrilla()-> POST /camiones/asignar-cuadrilla
  */
-class CamionController
+class CamionController extends ControladorBase
 {
     private RepositorioCamiones $repo;
 
@@ -147,23 +147,4 @@ class CamionController
         $this->responder(['mensaje' => 'Camión movido de flota.', 'camion' => $camion], 200);
     }
 
-    private function leerJson(): array
-    {
-        $cuerpo = file_get_contents('php://input');
-        $datos = json_decode($cuerpo, true);
-        return is_array($datos) ? $datos : [];
-    }
-
-    private function responder(mixed $datos, int $codigo = 200): void
-    {
-        http_response_code($codigo);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode($datos, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-        exit;
-    }
-
-    private function error(string $mensaje, int $codigo = 400): void
-    {
-        $this->responder(['error' => $mensaje], $codigo);
-    }
 }
