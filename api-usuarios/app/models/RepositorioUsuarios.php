@@ -4,110 +4,120 @@ declare(strict_types=1);
 namespace App\Models;
 
 /**
- * RepositorioUsuarios: persistencia de usuarios en archivo JSON.
+ * RepositorioUsuarios: persistencia de usuarios en MySQL.
  *
- * HEREDA de RepositorioJson todo el motor común (leer/escribir el archivo,
- * todos(), buscarPorId(), eliminar(), proximoId()). Acá solo queda lo
- * específico de usuarios: el archivo, los datos de prueba, cómo se arma
- * cada subclase (herencia de Usuario), y los métodos propios.
+ * HEREDA de RepositorioSql el motor común (conexión PDO, todos(),
+ * buscarPorId(), eliminar(), proximoId()). Acá solo lo específico:
+ * la tabla, cómo se rearma cada subclase (herencia de Usuario), la
+ * siembra de datos de prueba y los métodos propios.
  */
-class RepositorioUsuarios extends RepositorioJson
+class RepositorioUsuarios extends RepositorioSql
 {
-    protected function nombreArchivo(): string
+    public function __construct()
     {
-        return 'usuarios.json';
+        parent::__construct();
+        $this->sembrarSiVacio();
     }
 
-    protected function datosIniciales(): array
+    protected function tabla(): string
     {
-        // Contraseña de todos los usuarios de prueba: 1234
+        return 'usuario';
+    }
+
+    /**
+     * Si la tabla está vacía, crea los usuarios de prueba. Se hace acá y no
+     * en base.sql porque el hash de '1234' debe generarlo password_hash()
+     * de PHP (un hash escrito a mano en SQL no validaría en el login).
+     * Contraseña de todos: 1234
+     */
+    private function sembrarSiVacio(): void
+    {
+        $f = $this->fila('SELECT COUNT(*) AS cant FROM usuario');
+        if ((int)$f['cant'] > 0) {
+            return;
+        }
         $hash = password_hash('1234', PASSWORD_DEFAULT);
-        return [
-            ['id' => 1, 'nombre' => 'Carlos Rodríguez', 'email' => 'admin@sigeru.uy',         'passwordHash' => $hash, 'rol' => 'administrador', 'especialidad' => null,            'cuadrilla' => null],
-            ['id' => 2, 'nombre' => 'Marta Pérez',      'email' => 'recoleccion@sigeru.uy',   'passwordHash' => $hash, 'rol' => 'operario',      'especialidad' => 'recoleccion',   'cuadrilla' => 'Cuadrilla Norte'],
-            ['id' => 3, 'nombre' => 'Julián Fernández', 'email' => 'clasificacion@sigeru.uy', 'passwordHash' => $hash, 'rol' => 'operario',      'especialidad' => 'clasificacion', 'cuadrilla' => null],
-            ['id' => 4, 'nombre' => 'Ana Silva',        'email' => 'vertedero@sigeru.uy',     'passwordHash' => $hash, 'rol' => 'operario',      'especialidad' => 'vertedero',     'cuadrilla' => null],
-            ['id' => 5, 'nombre' => 'Vecino de Prueba', 'email' => 'vecino@gmail.com',        'passwordHash' => $hash, 'rol' => 'vecino',        'especialidad' => null,            'cuadrilla' => null],
-        ];
+        $sql = 'INSERT INTO usuario (id, nombre, email, password_hash, rol, especialidad, cuadrilla_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)';
+        $this->consulta($sql, [1, 'Carlos Rodríguez', 'admin@sigeru.uy',         $hash, 'administrador', null,            null]);
+        $this->consulta($sql, [2, 'Marta Pérez',      'recoleccion@sigeru.uy',   $hash, 'operario',      'recoleccion',   1]);
+        $this->consulta($sql, [3, 'Julián Fernández', 'clasificacion@sigeru.uy', $hash, 'operario',      'clasificacion', null]);
+        $this->consulta($sql, [4, 'Ana Silva',        'vertedero@sigeru.uy',     $hash, 'operario',      'vertedero',     null]);
+        $this->consulta($sql, [5, 'Vecino de Prueba', 'vecino@gmail.com',        $hash, 'vecino',        null,            null]);
     }
 
     /**
      * Rearma el objeto con su subclase correcta según rol y, para operarios,
-     * según su especialidad (acá se reconstruye la herencia al leer).
+     * según su especialidad (la herencia se reconstruye al leer de la BD).
      */
     protected function aObjeto(array $f): object
     {
+        $id    = (int)$f['id'];
+        $hash  = $f['password_hash'];
         if ($f['rol'] === 'operario') {
-            $cuadrilla = $f['cuadrilla'] ?? null;
+            // El objeto guarda la cuadrilla como texto informativo (id o null).
+            $cuadrilla = $f['cuadrilla_id'] !== null ? (string)$f['cuadrilla_id'] : null;
             return match ($f['especialidad'] ?? 'recoleccion') {
-                'clasificacion' => new OperarioClasificacion($f['id'], $f['nombre'], $f['email'], $f['passwordHash'], $cuadrilla),
-                'vertedero'     => new OperarioVertedero($f['id'], $f['nombre'], $f['email'], $f['passwordHash'], $cuadrilla),
-                default         => new OperarioRecoleccion($f['id'], $f['nombre'], $f['email'], $f['passwordHash'], $cuadrilla),
+                'clasificacion' => new OperarioClasificacion($id, $f['nombre'], $f['email'], $hash, $cuadrilla),
+                'vertedero'     => new OperarioVertedero($id, $f['nombre'], $f['email'], $hash, $cuadrilla),
+                default         => new OperarioRecoleccion($id, $f['nombre'], $f['email'], $hash, $cuadrilla),
             };
         }
         return match ($f['rol']) {
-            'administrador' => new Administrador($f['id'], $f['nombre'], $f['email'], $f['passwordHash']),
-            default         => new Vecino($f['id'], $f['nombre'], $f['email'], $f['passwordHash']),
+            'administrador' => new Administrador($id, $f['nombre'], $f['email'], $hash),
+            default         => new Vecino($id, $f['nombre'], $f['email'], $hash),
         };
-    }
-
-    /** Convierte un Usuario en fila cruda para guardar. */
-    private function aFila(Usuario $u): array
-    {
-        $fila = [
-            'id'           => $u->getId(),
-            'nombre'       => $u->getNombre(),
-            'email'        => $u->getEmail(),
-            'passwordHash' => $u->getPasswordHash(),
-            'rol'          => $u->getRol(),
-            'especialidad' => null,
-            'cuadrilla'    => null,
-        ];
-        if ($u instanceof Operario) {
-            $fila['especialidad'] = $u->getEspecialidad();
-            $fila['cuadrilla']    = $u->getCuadrilla();
-        }
-        return $fila;
     }
 
     // ---------------- Métodos específicos de usuarios ----------------
 
     public function buscarPorEmail(string $email): ?Usuario
     {
-        foreach ($this->leerCrudo() as $f) {
-            if ($f['email'] === $email) {
-                /** @var Usuario */
-                return $this->aObjeto($f);
-            }
-        }
-        return null;
+        $f = $this->fila('SELECT * FROM usuario WHERE email = ?', [$email]);
+        /** @var ?Usuario */
+        return $f === null ? null : $this->aObjeto($f);
     }
 
-    public function agregar(Usuario $usuario): void
+    public function agregar(Usuario $u): void
     {
-        $filas = $this->leerCrudo();
-        $filas[] = $this->aFila($usuario);
-        $this->guardarCrudo($filas);
+        // Un usuario nuevo nunca nace asignado a una cuadrilla: eso se
+        // gestiona después desde el apartado Cuadrillas.
+        $esp = $u instanceof Operario ? $u->getEspecialidad() : null;
+        $this->consulta(
+            'INSERT INTO usuario (id, nombre, email, password_hash, rol, especialidad, cuadrilla_id)
+             VALUES (?, ?, ?, ?, ?, ?, NULL)',
+            [$u->getId(), $u->getNombre(), $u->getEmail(), $u->getPasswordHash(), $u->getRol(), $esp]
+        );
     }
 
     /**
-     * Actualiza un usuario. Si no viene hash nuevo, conserva la contraseña
-     * que ya tenía (para editar sin cambiarla). Devuelve true si existía.
+     * Actualiza un usuario. Conserva la contraseña si no viene hash nuevo, y
+     * conserva la cuadrilla asignada SALVO que el usuario deje de ser operario
+     * de recolección (en ese caso se lo desvincula, porque las cuadrillas son
+     * de recolección). Devuelve true si existía.
      */
-    public function actualizar(Usuario $usuario, ?string $hashNuevo = null): bool
+    public function actualizar(Usuario $u, ?string $hashNuevo = null): bool
     {
-        $filas = $this->leerCrudo();
-        foreach ($filas as $i => $f) {
-            if ((int)$f['id'] === $usuario->getId()) {
-                $nueva = $this->aFila($usuario);
-                if ($hashNuevo === null || $hashNuevo === '') {
-                    $nueva['passwordHash'] = $f['passwordHash'];
-                }
-                $filas[$i] = $nueva;
-                $this->guardarCrudo($filas);
-                return true;
-            }
+        $esp = $u instanceof Operario ? $u->getEspecialidad() : null;
+
+        if ($hashNuevo !== null && $hashNuevo !== '') {
+            $stmt = $this->consulta(
+                'UPDATE usuario SET nombre = ?, email = ?, password_hash = ?, rol = ?, especialidad = ? WHERE id = ?',
+                [$u->getNombre(), $u->getEmail(), $hashNuevo, $u->getRol(), $esp, $u->getId()]
+            );
+        } else {
+            $stmt = $this->consulta(
+                'UPDATE usuario SET nombre = ?, email = ?, rol = ?, especialidad = ? WHERE id = ?',
+                [$u->getNombre(), $u->getEmail(), $u->getRol(), $esp, $u->getId()]
+            );
         }
-        return false;
+
+        // Si ya no es operario de recolección, no puede seguir en una cuadrilla.
+        if ($esp !== 'recoleccion') {
+            $this->consulta('UPDATE usuario SET cuadrilla_id = NULL WHERE id = ?', [$u->getId()]);
+        }
+
+        // rowCount puede ser 0 si no cambió nada; verificamos existencia real.
+        return $this->fila('SELECT id FROM usuario WHERE id = ?', [$u->getId()]) !== null;
     }
 }

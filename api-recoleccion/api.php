@@ -7,7 +7,7 @@ declare(strict_types=1);
  * O con XAMPP/Apache usando el .htaccess incluido.
  */
 
-require __DIR__ . '/app/models/RepositorioJson.php';
+require __DIR__ . '/app/models/RepositorioSql.php';
 require __DIR__ . '/app/models/Camion.php';
 require __DIR__ . '/app/models/RepositorioCamiones.php';
 require __DIR__ . '/app/models/Flota.php';

@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 
 // ---- Cargamos las clases que usamos ----
-require __DIR__ . '/app/models/RepositorioJson.php';
+require __DIR__ . '/app/models/RepositorioSql.php';
 require __DIR__ . '/app/models/Usuario.php';
 require __DIR__ . '/app/models/Administrador.php';
 require __DIR__ . '/app/models/Operario.php';

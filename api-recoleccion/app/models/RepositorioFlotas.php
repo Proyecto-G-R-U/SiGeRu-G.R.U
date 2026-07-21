@@ -4,39 +4,29 @@ declare(strict_types=1);
 namespace App\Models;
 
 /**
- * RepositorioFlotas: persistencia de flotas en archivo JSON.
- * Hereda el motor común de RepositorioJson; acá solo lo específico.
+ * RepositorioFlotas: persistencia de flotas en MySQL.
+ * Hereda el motor común de RepositorioSql; acá solo lo específico.
+ * (Los datos de prueba los inserta base.sql.)
  */
-class RepositorioFlotas extends RepositorioJson
+class RepositorioFlotas extends RepositorioSql
 {
-    protected function nombreArchivo(): string
+    protected function tabla(): string
     {
-        return 'flotas.json';
-    }
-
-    protected function datosIniciales(): array
-    {
-        return [
-            ['id' => 1, 'nombre' => 'Flota Norte', 'zona' => 'Zona Norte'],
-            ['id' => 2, 'nombre' => 'Flota Sur',   'zona' => 'Zona Sur'],
-        ];
+        return 'flota';
     }
 
     protected function aObjeto(array $f): object
     {
-        return new Flota($f['id'], $f['nombre'], $f['zona'] ?? null);
+        return new Flota((int)$f['id'], $f['nombre'], $f['zona'] ?? null);
     }
 
     // ---------------- Métodos específicos ----------------
 
     public function agregar(Flota $flota): void
     {
-        $filas = $this->leerCrudo();
-        $filas[] = [
-            'id'     => $flota->getId(),
-            'nombre' => $flota->getNombre(),
-            'zona'   => $flota->getZona(),
-        ];
-        $this->guardarCrudo($filas);
+        $this->consulta(
+            'INSERT INTO flota (id, nombre, zona) VALUES (?, ?, ?)',
+            [$flota->getId(), $flota->getNombre(), $flota->getZona()]
+        );
     }
 }

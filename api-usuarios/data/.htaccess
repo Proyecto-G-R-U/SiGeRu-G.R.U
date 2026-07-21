@@ -1,4 +1,0 @@
-# Bloquea el acceso web directo a esta carpeta.
-# El archivo usuarios.json solo debe leerse desde PHP, nunca por URL,
-# porque contiene los hashes de contraseñas.
-Require all denied

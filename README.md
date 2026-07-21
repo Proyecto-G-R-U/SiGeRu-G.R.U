@@ -140,3 +140,40 @@ Cuadrilla (1) → Operarios (N).
 ### Reiniciar datos
 Borrá los `.json` de las carpetas `data/` (en api-usuarios y api-recoleccion) y se
 regeneran con los datos de prueba.
+
+## MIGRACIÓN A MYSQL (adelanto de la 2da entrega)
+
+La persistencia en archivos JSON fue **reemplazada por MySQL** (PDO). Los
+datos ahora viven en la base `sigeru`, compartida por las 3 APIs.
+
+### Puesta en marcha (XAMPP)
+1. En el panel de XAMPP, arrancar **Apache** y **MySQL** (ahora los dos).
+2. Importar la base UNA vez: entrar a `http://localhost/phpmyadmin`,
+   pestaña **Importar**, elegir `base-de-datos/base.sql` y ejecutar.
+   (Crea la base `sigeru`, las 5 tablas y los datos de prueba.)
+3. Entrar a `http://localhost/sigeru/frontend/index.html` como siempre.
+
+Los usuarios de prueba (contraseña `1234`) los crea el propio sistema la
+primera vez que se usa la API (no van en el SQL porque el hash de la
+contraseña debe generarlo PHP). Ver `RepositorioUsuarios::sembrarSiVacio()`.
+
+### Qué cambió en el código
+- `RepositorioJson` (base abstracta) fue reemplazada por `RepositorioSql`:
+  misma idea de herencia, pero consulta MySQL con PDO en vez de archivos.
+- Los 5 repositorios ahora traducen sus operaciones a SQL con consultas
+  preparadas (protección contra inyección SQL).
+- La relación cuadrilla-operarios cambió de un array embebido a la columna
+  `usuario.cuadrilla_id`: la exclusividad ahora la garantiza el diseño de
+  la base (un usuario tiene UNA sola cuadrilla_id).
+- Las claves foráneas con `ON DELETE SET NULL` liberan automáticamente a
+  operarios y camiones cuando se elimina su cuadrilla o flota.
+- Controladores, modelos de dominio y frontend: **sin cambios**. Esa era la
+  gracia de separar el repositorio del resto.
+
+### Reiniciar datos
+Para volver a los datos de prueba: reimportar `base.sql` en phpMyAdmin
+(borra y recrea todo).
+
+### Credenciales de conexión
+XAMPP por defecto: host `localhost`, usuario `root`, sin contraseña.
+Se cambian en `app/models/RepositorioSql.php` de cada API.

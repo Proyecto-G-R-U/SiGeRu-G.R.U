@@ -155,7 +155,8 @@
             if (resp.ok) {
                 entrarAlPanel(resultado.usuario);
             } else {
-                loginMsg.textContent = resultado.error || 'No se pudo iniciar sesión.';
+                loginMsg.textContent = (resultado.error || 'No se pudo iniciar sesión.') +
+                    (resultado.detalle ? ' [Detalle técnico: ' + resultado.detalle + ']' : '');
                 loginMsg.classList.add('err');
             }
         } catch (err) {

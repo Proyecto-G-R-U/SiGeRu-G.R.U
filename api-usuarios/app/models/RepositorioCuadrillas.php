@@ -4,93 +4,78 @@ declare(strict_types=1);
 namespace App\Models;
 
 /**
- * RepositorioCuadrillas: persistencia de cuadrillas en archivo JSON.
- * Hereda el motor común de RepositorioJson; acá solo lo específico.
+ * RepositorioCuadrillas: persistencia de cuadrillas en MySQL.
+ *
+ * Cambio importante respecto a la versión JSON: antes cada cuadrilla
+ * guardaba un array "operarios"; ahora la relación vive del lado del
+ * usuario (columna usuario.cuadrilla_id). Eso garantiza la EXCLUSIVIDAD
+ * por diseño: como un usuario tiene UNA sola cuadrilla_id, es imposible
+ * que esté en dos cuadrillas a la vez.
+ *
+ * El objeto Cuadrilla sigue exponiendo su lista de operarios (la
+ * reconstruimos con una consulta), así el frontend no cambia en nada.
  */
-class RepositorioCuadrillas extends RepositorioJson
+class RepositorioCuadrillas extends RepositorioSql
 {
-    protected function nombreArchivo(): string
+    protected function tabla(): string
     {
-        return 'cuadrillas.json';
-    }
-
-    protected function datosIniciales(): array
-    {
-        return [
-            ['id' => 1, 'nombre' => 'Cuadrilla Norte', 'zona' => 'Zona Norte', 'operarios' => [2]],
-        ];
+        return 'cuadrilla';
     }
 
     protected function aObjeto(array $f): object
     {
-        return new Cuadrilla($f['id'], $f['nombre'], $f['zona'] ?? null, $f['operarios'] ?? []);
+        // Reconstruimos la lista de integrantes consultando qué usuarios
+        // apuntan a esta cuadrilla.
+        $operarios = array_map(
+            fn($r) => (int)$r['id'],
+            $this->filas('SELECT id FROM usuario WHERE cuadrilla_id = ?', [$f['id']])
+        );
+        return new Cuadrilla((int)$f['id'], $f['nombre'], $f['zona'] ?? null, $operarios);
     }
 
     // ---------------- Métodos específicos de cuadrillas ----------------
 
     public function agregar(Cuadrilla $c): void
     {
-        $filas = $this->leerCrudo();
-        $filas[] = [
-            'id'        => $c->getId(),
-            'nombre'    => $c->getNombre(),
-            'zona'      => $c->getZona(),
-            'operarios' => $c->getOperarios(),
-        ];
-        $this->guardarCrudo($filas);
+        $this->consulta(
+            'INSERT INTO cuadrilla (id, nombre, zona) VALUES (?, ?, ?)',
+            [$c->getId(), $c->getNombre(), $c->getZona()]
+        );
     }
 
     /**
-     * Agrega un operario garantizando EXCLUSIVIDAD: lo quita de cualquier
-     * otra cuadrilla antes de sumarlo a la indicada. Así un operario nunca
-     * queda en dos cuadrillas a la vez. Devuelve true si la cuadrilla existe.
+     * Suma un operario a una cuadrilla. La exclusividad es automática:
+     * el UPDATE pisa cualquier cuadrilla anterior del operario.
+     * Devuelve true si la cuadrilla destino existe.
      */
     public function agregarOperario(int $cuadrillaId, int $operarioId): bool
     {
-        $filas = $this->leerCrudo();
-        $existeDestino = false;
-
-        foreach ($filas as $i => $f) {
-            $operarios = array_map('intval', $f['operarios'] ?? []);
-            $operarios = array_values(array_filter($operarios, fn($op) => $op !== $operarioId));
-            if ((int)$f['id'] === $cuadrillaId) {
-                $operarios[] = $operarioId;
-                $existeDestino = true;
-            }
-            $filas[$i]['operarios'] = $operarios;
-        }
-
-        if (!$existeDestino) {
+        if ($this->fila('SELECT id FROM cuadrilla WHERE id = ?', [$cuadrillaId]) === null) {
             return false;
         }
-        $this->guardarCrudo($filas);
+        $this->consulta('UPDATE usuario SET cuadrilla_id = ? WHERE id = ?', [$cuadrillaId, $operarioId]);
         return true;
     }
 
     /** Quita un operario de una cuadrilla. Devuelve true si la cuadrilla existe. */
     public function quitarOperario(int $cuadrillaId, int $operarioId): bool
     {
-        $filas = $this->leerCrudo();
-        foreach ($filas as $i => $f) {
-            if ((int)$f['id'] === $cuadrillaId) {
-                $operarios = array_map('intval', $f['operarios'] ?? []);
-                $filas[$i]['operarios'] = array_values(array_filter($operarios, fn($op) => $op !== $operarioId));
-                $this->guardarCrudo($filas);
-                return true;
-            }
+        if ($this->fila('SELECT id FROM cuadrilla WHERE id = ?', [$cuadrillaId]) === null) {
+            return false;
         }
-        return false;
+        $this->consulta(
+            'UPDATE usuario SET cuadrilla_id = NULL WHERE id = ? AND cuadrilla_id = ?',
+            [$operarioId, $cuadrillaId]
+        );
+        return true;
     }
 
     /** Ids de operarios que ya integran alguna cuadrilla (para calcular libres). */
     public function operariosOcupados(): array
     {
-        $ocupados = [];
-        foreach ($this->leerCrudo() as $f) {
-            foreach ($f['operarios'] ?? [] as $op) {
-                $ocupados[] = (int)$op;
-            }
-        }
-        return array_values(array_unique($ocupados));
+        return array_map(
+            fn($r) => (int)$r['id'],
+            $this->filas('SELECT id FROM usuario WHERE cuadrilla_id IS NOT NULL')
+        );
     }
 }
