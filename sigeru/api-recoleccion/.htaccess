@@ -1,0 +1,18 @@
+# ============================================================
+# .htaccess — Reescritura de URLs para Apache (XAMPP).
+#
+# Manda todas las peticiones que no sean archivos reales a api.php,
+# que se encarga del ruteo REST. Así las URLs quedan limpias:
+#   http://localhost/sigeru/api-usuarios/usuarios  ->  api.php
+#
+# Requiere mod_rewrite activo (viene activo por defecto en XAMPP).
+# ============================================================
+
+RewriteEngine On
+
+# Si el pedido NO es un archivo ni una carpeta real...
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# ...lo mandamos a api.php (mantiene la query string con QSA).
+RewriteRule ^ api.php [QSA,L]

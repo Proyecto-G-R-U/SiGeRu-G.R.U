@@ -1,0 +1,2610 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>G.R.U — Panel</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+
+<!-- ============================================================
+     PANTALLA 1: LOGIN (se muestra al entrar, sin sesión)
+     ============================================================ -->
+<div class="login-screen" id="pantalla-login">
+    <div class="login-card">
+        <h1>G.R.U</h1>
+        <p class="login-sub">Gestión de Residuos Urbanos</p>
+        <p class="login-desc">Ingresá con tu cuenta para acceder al sistema.</p>
+        <form id="form-login">
+            <label for="login-email">Email</label>
+            <input type="email" id="login-email" required>
+            <label for="login-password">Contraseña</label>
+            <input type="password" id="login-password" required>
+            <button type="submit" class="btn">Ingresar</button>
+        </form>
+        <p class="msg" id="login-msg"></p>
+        <a class="link" href="registro.html">¿No tenés cuenta? Registrate como vecino</a>
+    </div>
+</div>
+
+<!-- ============================================================
+     PANTALLA 2: APP (sidebar + header + contenido)
+     Oculta hasta iniciar sesión. El color lo pone la clase de rol
+     en <body> (tema-vecino, tema-admin, etc.) vía JavaScript.
+     ============================================================ -->
+<div class="app oculto" id="pantalla-app">
+
+    <!-- SIDEBAR (color según rol) -->
+    <aside class="sidebar">
+        <div class="logo">
+            <h1>G.R.U</h1>
+            <p>Gestión de Residuos Urbanos</p>
+        </div>
+        <nav class="nav" id="nav-menu">
+            <!-- El menú se arma por JS según el rol -->
+        </nav>
+    </aside>
+
+    <!-- ZONA DERECHA: header + contenido -->
+    <div class="main">
+        <header class="header">
+            <span class="header-title" id="header-title">Panel</span>
+            <div class="header-right">
+                <span class="header-name" id="header-name"></span>
+                <span class="badge" id="header-badge"></span>
+                <button class="btn-salir" onclick="cerrarSesion()">
+                    <span class="material-icons-outlined">logout</span> Cerrar Sesión
+                </button>
+            </div>
+        </header>
+
+        <main class="content" id="content">
+            <!-- El contenido se arma por JS según el rol -->
+        </main>
+    </div>
+</div>
+
+<!-- ===== MODAL DE EDICIÓN (reutilizable) ===== -->
+<div id="modal-editar" class="modal-fondo oculto">
+    <div class="modal-caja">
+        <div class="modal-head">
+            <h3 id="modal-titulo">Editar</h3>
+            <button class="modal-cerrar" onclick="cerrarModal()">&times;</button>
+        </div>
+        <div id="modal-cuerpo"></div>
+        <p class="msg" id="modal-msg"></p>
+    </div>
+</div>
+
+<!-- ============================================================
+     JAVASCRIPT EMBEBIDO
+     ============================================================ -->
+<script>
+    const API_USUARIOS    = '../api-usuarios';
+    const API_GESTION     = '../api-gestion';
+    const API_RECOLECCION = '../api-recoleccion';
+
+    // Helper para peticiones GET que evita el caché del navegador. Sin esto,
+    // Chrome a veces devuelve la respuesta vieja y las listas no se actualizan
+    // hasta refrescar la página. 'no-store' obliga a pedir datos frescos.
+    function fetchGet(url) {
+        return fetch(url, { cache: 'no-store' });
+    }
+
+    // Interpreta la respuesta de una API. Si el servidor devolvió algo que no
+    // es JSON (por ejemplo una página de error de PHP), lo detecta y arma un
+    // mensaje útil en vez de dejar que falle el .json() sin explicación.
+    async function leerRespuesta(resp) {
+        const tipo = resp.headers.get('content-type') || '';
+        if (!tipo.includes('application/json')) {
+            const texto = await resp.text();
+            return { ok: false, datos: {
+                error: 'La API respondió de forma inesperada (código ' + resp.status + '). ' +
+                       texto.substring(0, 200)
+            }};
+        }
+        return { ok: resp.ok, datos: await resp.json() };
+    }
+
+    // Arma el texto de error a mostrar, incluyendo el detalle técnico si vino.
+    function textoError(datos, porDefecto) {
+        return (datos.error || porDefecto) +
+               (datos.detalle ? ' [' + datos.detalle + ']' : '');
+    }
+
+    // Usuario logueado (para saber su rol/especialidad y su email).
+    let usuarioActual = null;
+
+    // Caches en memoria para mostrar nombres (no ids) de cuadrillas y flotas.
+    let cacheCuadrillas = [];
+    let cacheFlotas = [];
+    let cacheUsuarios = [];
+
+    // Si viene de "click en camión", muestra solo esta cuadrilla en Usuarios.
+    let cuadrillaFiltrada = null;
+
+    // Recuerda en qué pestaña/sección estamos, para poder recargarla entera
+    // tras agregar o eliminar algo (así se actualizan tabla, selectores y mapa).
+    let seccionActual = 'inicio';
+
+    // -------------------------------------------------------------
+    // CONFIGURACIÓN DE CADA ROL: color (clase de tema), título del
+    // panel, texto del badge y el "tipo" con el que decidimos la vista.
+    // El rol efectivo de un operario se arma como 'operario_<especialidad>'.
+    // -------------------------------------------------------------
+    const ROLES = {
+        vecino:                 { tema: 'tema-vecino',        titulo: 'Panel Informativo Vecinal', badge: 'Público' },
+        administrador:          { tema: 'tema-admin',         titulo: 'Panel Administrativo',       badge: 'Admin Municipal' },
+        operario_recoleccion:   { tema: 'tema-recoleccion',   titulo: 'Panel de Recolección',       badge: 'Op. Recolección' },
+        operario_clasificacion: { tema: 'tema-clasificacion', titulo: 'Panel de Clasificación',     badge: 'Op. Clasificación' },
+        operario_vertedero:     { tema: 'tema-vertedero',     titulo: 'Panel de Vertedero',         badge: 'Op. Vertedero' },
+    };
+
+    // Devuelve el rol efectivo de un usuario (distingue los 3 operarios).
+    function rolEfectivo(u) {
+        if (u.rol === 'operario') {
+            return 'operario_' + (u.especialidad || 'recoleccion');
+        }
+        return u.rol;
+    }
+
+    // -------------------------------------------------------------
+    // LOGIN
+    // -------------------------------------------------------------
+    const formLogin = document.getElementById('form-login');
+    const loginMsg  = document.getElementById('login-msg');
+
+    formLogin.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        loginMsg.textContent = '';
+        loginMsg.className = 'msg';
+        const datos = {
+            email:    document.getElementById('login-email').value.trim(),
+            password: document.getElementById('login-password').value,
+        };
+        try {
+            const resp = await fetch(API_USUARIOS + '/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos),
+            });
+            const resultado = await resp.json();
+            if (resp.ok) {
+                entrarAlPanel(resultado.usuario);
+            } else {
+                loginMsg.textContent = (resultado.error || 'No se pudo iniciar sesión.') +
+                    (resultado.detalle ? ' [Detalle técnico: ' + resultado.detalle + ']' : '');
+                loginMsg.classList.add('err');
+            }
+        } catch (err) {
+            loginMsg.textContent = 'No se pudo conectar con la API de Usuarios.';
+            loginMsg.classList.add('err');
+        }
+    });
+
+    function entrarAlPanel(usuario) {
+        // Guardamos la sesión para que sobreviva a un refresco de página.
+        // sessionStorage se borra al cerrar el navegador (más seguro).
+        try { sessionStorage.setItem('sigeru_usuario', JSON.stringify(usuario)); } catch (e) {}
+        mostrarPanelDe(usuario);
+    }
+
+    // Aplica en pantalla el panel del usuario (sin volver a tocar el storage).
+    function mostrarPanelDe(usuario) {
+        usuarioActual = usuario;
+        const rol = rolEfectivo(usuario);
+        const cfg = ROLES[rol] || ROLES.vecino;
+
+        // Aplicar el color del tema en el body.
+        document.body.className = cfg.tema;
+
+        // Header
+        document.getElementById('header-title').textContent = cfg.titulo;
+        document.getElementById('header-name').textContent = usuario.nombre;
+        document.getElementById('header-badge').textContent = cfg.badge;
+
+        // Mostrar la app, ocultar login
+        document.getElementById('pantalla-login').classList.add('oculto');
+        document.getElementById('pantalla-app').classList.remove('oculto');
+
+        // Armar menú y contenido según el rol
+        construirMenu(rol);
+        mostrarSeccion('inicio');
+    }
+
+    function cerrarSesion() {
+        usuarioActual = null;
+        try { sessionStorage.removeItem('sigeru_usuario'); } catch (e) {}
+        document.body.className = '';
+        document.getElementById('pantalla-app').classList.add('oculto');
+        document.getElementById('pantalla-login').classList.remove('oculto');
+        formLogin.reset();
+        loginMsg.textContent = '';
+    }
+
+    // Al cargar la página, si había una sesión guardada, la restauramos
+    // (así un F5 no te devuelve al login).
+    function restaurarSesion() {
+        try {
+            const guardado = sessionStorage.getItem('sigeru_usuario');
+            if (guardado) {
+                mostrarPanelDe(JSON.parse(guardado));
+            }
+        } catch (e) { /* si algo falla, se queda en el login normal */ }
+    }
+
+    // -------------------------------------------------------------
+    // MENÚ LATERAL según el rol
+    // Solo el administrador tiene secciones de gestión. El resto solo "Inicio".
+    // -------------------------------------------------------------
+    function construirMenu(rol) {
+        const nav = document.getElementById('nav-menu');
+        let items = [
+            { id: 'inicio',      icono: 'home',           texto: 'Inicio' },
+            // El mapa de incidencias lo ve TODO usuario logueado: los vecinos y
+            // operarios para reportar problemas, el admin además para gestionarlos.
+            { id: 'incidencias', icono: 'report_problem', texto: 'Incidencias' },
+        ];
+
+        // La guía de clasificación es para los vecinos (requerimiento 3.1.3.5).
+        if (rol === 'vecino') {
+            items.push({ id: 'guia', icono: 'menu_book', texto: 'Guía de reciclaje' });
+        }
+
+        if (rol === 'administrador') {
+            items.push(
+                { id: 'usuarios',     icono: 'group',          texto: 'Usuarios' },
+                { id: 'contenedores', icono: 'delete',         texto: 'Contenedores' },
+                { id: 'camiones',     icono: 'local_shipping', texto: 'Camiones' },
+                { id: 'flotas',       icono: 'grid_view',      texto: 'Flotas' },
+                { id: 'instalaciones', icono: 'factory',      texto: 'Instalaciones' },
+                { id: 'rutas',        icono: 'route',          texto: 'Rutas' },
+            );
+        }
+
+        nav.innerHTML = items.map(function (it, i) {
+            return '<a class="nav-item' + (i === 0 ? ' activo' : '') + '" ' +
+                'id="nav-' + it.id + '" onclick="clickMenu(\'' + it.id + '\')">' +
+                '<span class="material-icons-outlined">' + it.icono + '</span> ' + it.texto + '</a>';
+        }).join('');
+    }
+
+    // Click en el menú lateral. Limpia el filtro de cuadrilla (para que
+    // "Usuarios" desde el menú muestre siempre todas), y muestra la sección.
+    function clickMenu(id) {
+        cuadrillaFiltrada = null;
+        mostrarSeccion(id);
+    }
+
+    // -------------------------------------------------------------
+    // CAMBIO DE SECCIÓN
+    // -------------------------------------------------------------
+    function mostrarSeccion(id) {
+        seccionActual = id; // recordamos dónde estamos
+
+        // Al reemplazar el contenido se destruyen los divs de los mapas, así
+        // que soltamos las referencias viejas para que se puedan recrear.
+        mapaCrear = null; mapaListado = null; capaPines = null; marcadorNuevo = null;
+        mapaInc = null; capaPinesInc = null; contenedorElegido = null;
+        coordNueva = { lat: null, lng: null };
+        mapaInstCrear = null; mapaInstListado = null;
+        marcadorInstNuevo = null; capaPinesInst = null;
+        coordInstNueva = { lat: null, lng: null };
+
+        // marcar activo en el menú
+        document.querySelectorAll('.nav-item').forEach(function (a) { a.classList.remove('activo'); });
+        const navEl = document.getElementById('nav-' + id);
+        if (navEl) navEl.classList.add('activo');
+
+        const content = document.getElementById('content');
+
+        if (id === 'inicio') {
+            const rol = rolEfectivo(usuarioActual);
+            if (rol === 'vecino') {
+                content.innerHTML = landingVecino();
+            } else if (rol === 'administrador') {
+                content.innerHTML = '<div class="bienvenida"><h2>Hola, ' + usuarioActual.nombre +
+                    '</h2><p>Bienvenido al panel administrativo. Usá el menú lateral para gestionar ' +
+                    'usuarios, contenedores, camiones y flotas.</p></div>';
+            } else if (rol === 'operario_recoleccion') {
+                panelRecoleccion();
+            } else if (rol === 'operario_clasificacion') {
+                panelInstalacion('clasificacion');
+            } else if (rol === 'operario_vertedero') {
+                panelInstalacion('vertedero');
+            } else {
+                content.innerHTML = '<div class="bienvenida"><h2>Hola, ' + usuarioActual.nombre +
+                    '</h2><p>Bienvenido a tu panel.</p></div>';
+            }
+            return;
+        }
+
+        // Secciones de administrador
+        if (id === 'usuarios')     { content.innerHTML = plantillaUsuarios();     cargarUsuarios(); cargarCuadrillas(); }
+        if (id === 'contenedores') { content.innerHTML = plantillaContenedores(); cargarContenedores(); }
+        if (id === 'camiones')     { content.innerHTML = plantillaCamiones();     cargarCamiones(); cargarFlotasEnSelect(); cargarCuadrillasEnSelect(); }
+        if (id === 'flotas')       { content.innerHTML = plantillaFlotas();       cargarPanelFlotas(); }
+        if (id === 'instalaciones'){ content.innerHTML = plantillaInstalaciones(); cargarInstalaciones(); }
+        if (id === 'incidencias')  { content.innerHTML = plantillaIncidencias();  cargarIncidencias(); }
+        if (id === 'guia')         { content.innerHTML = plantillaGuia(); }
+        if (id === 'rutas')        { content.innerHTML = plantillaRutas();       cargarRutas(); }
+    }
+
+    // Vuelve a dibujar la sección actual completa (tabla + selectores + mapa),
+    // sin recargar la página ni sacarte de la pestaña. Se llama después de
+    // agregar o eliminar algo, para que TODO lo que depende de esos datos
+    // (no solo la tabla) se actualice al instante.
+    function recargarSeccionActual() {
+        if (seccionActual && seccionActual !== 'inicio') {
+            mostrarSeccion(seccionActual);
+        }
+    }
+
+    // =============================================================
+    //  PLANTILLAS DE SECCIÓN (solo admin)
+    // =============================================================
+
+    // Contenido informativo de G.R.U que ve el vecino en su Inicio.
+    function landingVecino() {
+        return ''
+        + '<div class="landing-vecino">'
+        + '  <div class="lv-hero">'
+        + '    <h2>Bienvenido a G.R.U</h2>'
+        + '    <p class="lv-sub">Gestión de Residuos Urbanos</p>'
+        + '    <p class="lv-intro">G.R.U es el sistema municipal que coordina la recolección, '
+        + '    clasificación y disposición de los residuos de la ciudad. Como vecino, sos una '
+        + '    parte fundamental para mantener limpio y sano nuestro entorno.</p>'
+        + '  </div>'
+        + '  <div class="lv-cards">'
+        + '    <div class="lv-card"><span class="material-icons-outlined">recycling</span>'
+        + '      <h3>Reciclá bien</h3>'
+        + '      <p>Separá tus residuos en reciclables y mezclados. Cada contenedor tiene su tipo, '
+        + '      identificado por color y etiqueta.</p></div>'
+        + '    <div class="lv-card"><span class="material-icons-outlined">place</span>'
+        + '      <h3>Contenedores cerca tuyo</h3>'
+        + '      <p>El sistema mapea todos los contenedores de la ciudad con su ubicación exacta '
+        + '      y su estado actual.</p></div>'
+        + '    <div class="lv-card"><span class="material-icons-outlined">local_shipping</span>'
+        + '      <h3>Recolección organizada</h3>'
+        + '      <p>Cuadrillas y camiones trabajan coordinadamente para que la recolección sea '
+        + '      eficiente en cada zona.</p></div>'
+        + '    <div class="lv-card"><span class="material-icons-outlined">report_problem</span>'
+        + '      <h3>Reportá problemas</h3>'
+        + '      <p>¿Viste un contenedor roto o desbordado? Entrá a Incidencias, marcalo '
+        + '      en el mapa y avisanos. Nos ayudás a llegar antes.</p></div>'
+        + '  </div>'
+        + '  <div class="lv-footer">'
+        + '    <p>Juntos hacemos una ciudad más limpia.</p>'
+        + '  </div>'
+        + '</div>';
+    }
+
+    function plantillaUsuarios() {
+        return ''
+        + '<div class="panel"><h3>Nuevo usuario</h3>'
+        + '<form id="form-usuario" class="form-inline">'
+        + '<div><label>Nombre</label><input type="text" id="u-nombre" required></div>'
+        + '<div><label>Email</label><input type="email" id="u-email" required></div>'
+        + '<div><label>Contraseña</label><input type="password" id="u-password" required></div>'
+        + '<div><label>Rol</label><select id="u-rol" onchange="toggleEspecialidad()">'
+        + '<option value="vecino">Vecino</option>'
+        + '<option value="operario">Operario</option>'
+        + '<option value="administrador">Administrador</option></select></div>'
+        + '<div id="wrap-especialidad" style="display:none;"><label>Especialidad</label>'
+        + '<select id="u-especialidad">'
+        + '<option value="recoleccion">Recolección</option>'
+        + '<option value="clasificacion">Clasificación</option>'
+        + '<option value="vertedero">Vertedero</option></select></div>'
+        + '<div class="full"><button type="submit" class="btn">Agregar usuario</button></div>'
+        + '</form><p class="msg" id="u-msg"></p></div>'
+        + '<table class="tabla"><thead><tr><th>ID</th><th>Nombre</th><th>Email</th>'
+        + '<th>Rol</th><th>Acción</th></tr></thead><tbody id="tabla-usuarios"></tbody></table>'
+        + '<h2 class="sec-titulo">Cuadrillas</h2>'
+        + '<div id="cuad-filtro-aviso" class="filtro-aviso" style="display:none;">'
+        + '<span>Mostrando solo la cuadrilla del camión seleccionado.</span>'
+        + '<button class="btn-mini" onclick="limpiarFiltroCuadrilla()">Ver todas</button></div>'
+        + '<div class="panel"><h3>Nueva cuadrilla</h3>'
+        + '<form id="form-cuadrilla" class="form-inline">'
+        + '<div><label>Nombre</label><input type="text" id="cu-nombre" required></div>'
+        + '<div><label>Zona</label><input type="text" id="cu-zona"></div>'
+        + '<div class="full"><button type="submit" class="btn">Crear cuadrilla</button></div>'
+        + '</form><p class="msg" id="cu-msg"></p></div>'
+        + '<table class="tabla"><thead><tr><th>ID</th><th>Nombre</th><th>Zona</th>'
+        + '<th>Integrantes</th><th>Acción</th></tr></thead><tbody id="tabla-cuadrillas"></tbody></table>';
+    }
+
+    function plantillaContenedores() {
+        return ''
+        + '<div class="panel"><h3>Nuevo contenedor</h3>'
+        + '<form id="form-contenedor" class="form-inline">'
+        + '<div><label>Código</label><input type="text" id="c-codigo" required></div>'
+        + '<div><label>Dirección</label><input type="text" id="c-direccion" required></div>'
+        + '<div><label>Tipo de residuo</label><select id="c-tipo">'
+        + '<option value="mezclado">Mezclado</option>'
+        + '<option value="reciclable">Reciclable</option></select></div>'
+        + '<div><label>Estado (integridad)</label><select id="c-estado">'
+        + '<option value="operativo">Operativo</option>'
+        + '<option value="roto">Roto</option></select></div>'
+        + '<div><label>Nivel de llenado</label><select id="c-llenado">'
+        + '<option value="vacio">Vacío</option>'
+        + '<option value="lleno">Lleno</option>'
+        + '<option value="desbordado">Desbordado</option></select></div>'
+        + '<div class="full"><label>Ubicación (hacé click en el mapa para marcarla)</label>'
+        + '<div id="mapa-crear" class="mapa"></div>'
+        + '<p class="mapa-coord" id="c-coord">Sin ubicación seleccionada.</p></div>'
+        + '<div class="full"><button type="submit" class="btn">Agregar contenedor</button></div>'
+        + '</form><p class="msg" id="c-msg"></p></div>'
+        + '<h2 class="sec-titulo">Contenedores en el mapa</h2>'
+        + '<div id="mapa-listado" class="mapa mapa-grande"></div>'
+        + '<table class="tabla"><thead><tr><th>ID</th><th>Código</th><th>Dirección</th>'
+        + '<th>Tipo</th><th>Estado</th><th>Llenado</th><th>Acción</th></tr></thead>'
+        + '<tbody id="tabla-contenedores"></tbody></table>';
+    }
+
+    function plantillaCamiones() {
+        return ''
+        + '<div class="panel"><h3>Nuevo camión</h3>'
+        + '<form id="form-camion" class="form-inline">'
+        + '<div><label>Patente</label><input type="text" id="k-patente" required></div>'
+        + '<div><label>Modelo</label><input type="text" id="k-modelo" required></div>'
+        + '<div><label>Estado</label><select id="k-estado">'
+        + '<option value="operativo">Operativo</option>'
+        + '<option value="mantenimiento">Mantenimiento</option></select></div>'
+        + '<div><label>Disponibilidad</label><select id="k-disp">'
+        + '<option value="disponible">Disponible</option>'
+        + '<option value="en_ruta">En ruta</option></select></div>'
+        + '<div><label>Flota</label><select id="k-flota"></select></div>'
+        + '<div><label>Cuadrilla</label><select id="k-cuadrilla"></select></div>'
+        + '<div class="full"><button type="submit" class="btn">Agregar camión</button></div>'
+        + '</form><p class="msg" id="k-msg"></p></div>'
+        + '<table class="tabla"><thead><tr><th>ID</th><th>Patente</th><th>Modelo</th>'
+        + '<th>Estado</th><th>Disponibilidad</th><th>Flota</th><th>Cuadrilla</th>'
+        + '<th>Acción</th></tr></thead><tbody id="tabla-camiones"></tbody></table>';
+    }
+
+    // Sección Incidencias: la ven TODOS los roles. El mapa y el botón de
+    // reportar son iguales para todos; el admin ve además la gestión.
+    // Guía educativa de clasificación de residuos para los vecinos
+    // (requerimiento 3.1.3.5).
+    function plantillaGuia() {
+        return ''
+        + '<div class="guia">'
+        + '  <div class="guia-hero">'
+        + '    <h2>Guía de clasificación de residuos</h2>'
+        + '    <p>Separar bien los residuos hace que se puedan reciclar. Esta guía te ayuda '
+        + '    a saber qué va en cada contenedor.</p>'
+        + '  </div>'
+
+        + '  <div class="guia-tipos">'
+        + '    <div class="guia-tipo verde">'
+        + '      <div class="guia-cab"><span class="material-icons-outlined">recycling</span>'
+        + '        <h3>Contenedor de reciclables</h3></div>'
+        + '      <p class="guia-sub">Materiales limpios y secos que se pueden recuperar.</p>'
+        + '      <p class="guia-si"><b>SÍ va:</b></p>'
+        + '      <ul>'
+        + '        <li>Papel y cartón limpios (cajas, hojas, diarios)</li>'
+        + '        <li>Botellas y envases de plástico</li>'
+        + '        <li>Latas de aluminio y conservas</li>'
+        + '        <li>Botellas y frascos de vidrio</li>'
+        + '        <li>Envases de tetrabrik (leche, jugo)</li>'
+        + '      </ul>'
+        + '      <p class="guia-no"><b>NO va:</b></p>'
+        + '      <ul>'
+        + '        <li>Papel o cartón sucio o con grasa (cajas de pizza)</li>'
+        + '        <li>Servilletas y pañuelos usados</li>'
+        + '        <li>Restos de comida</li>'
+        + '      </ul>'
+        + '    </div>'
+
+        + '    <div class="guia-tipo gris">'
+        + '      <div class="guia-cab"><span class="material-icons-outlined">delete</span>'
+        + '        <h3>Contenedor de mezclados</h3></div>'
+        + '      <p class="guia-sub">Lo que no se puede reciclar y va a disposición final.</p>'
+        + '      <p class="guia-si"><b>SÍ va:</b></p>'
+        + '      <ul>'
+        + '        <li>Restos de comida y residuos orgánicos</li>'
+        + '        <li>Papel higiénico, pañales y servilletas usadas</li>'
+        + '        <li>Envases sucios que no se pueden lavar</li>'
+        + '        <li>Cerámica y vidrios rotos (envueltos)</li>'
+        + '      </ul>'
+        + '      <p class="guia-no"><b>NO va:</b></p>'
+        + '      <ul>'
+        + '        <li>Reciclables limpios (van al otro contenedor)</li>'
+        + '        <li>Pilas, baterías y electrónicos</li>'
+        + '        <li>Medicamentos vencidos</li>'
+        + '      </ul>'
+        + '    </div>'
+        + '  </div>'
+
+        + '  <h2 class="sec-titulo">Antes de tirar</h2>'
+        + '  <div class="guia-tips">'
+        + '    <div class="guia-tip"><span class="material-icons-outlined">water_drop</span>'
+        + '      <h4>Enjuagá los envases</h4>'
+        + '      <p>Un envase con restos de comida contamina todo el material reciclable '
+        + '      que lo rodea. Un enjuague rápido alcanza.</p></div>'
+        + '    <div class="guia-tip"><span class="material-icons-outlined">compress</span>'
+        + '      <h4>Aplastá lo que puedas</h4>'
+        + '      <p>Cajas, botellas y latas ocupan mucho menos espacio aplastadas. '
+        + '      Entra más en cada contenedor y se necesitan menos viajes.</p></div>'
+        + '    <div class="guia-tip"><span class="material-icons-outlined">dangerous</span>'
+        + '      <h4>Residuos especiales</h4>'
+        + '      <p>Pilas, baterías, medicamentos, aceite y electrónicos NO van al '
+        + '      contenedor: tienen puntos de recolección específicos.</p></div>'
+        + '    <div class="guia-tip"><span class="material-icons-outlined">schedule</span>'
+        + '      <h4>Respetá los horarios</h4>'
+        + '      <p>Sacar la basura fuera del horario de recolección hace que quede '
+        + '      en la calle más tiempo y se desborde el contenedor.</p></div>'
+        + '  </div>'
+
+        + '  <div class="guia-cierre">'
+        + '    <p><b>¿Viste un contenedor roto o desbordado?</b> Entrá a la sección '
+        + '    Incidencias, marcalo en el mapa y reportalo. Nos ayudás a llegar antes.</p>'
+        + '  </div>'
+        + '</div>';
+    }
+
+    function plantillaIncidencias() {
+        const esAdmin = rolEfectivo(usuarioActual) === 'administrador';
+        let html = ''
+        + '<div class="panel">'
+        + '<h3>Mapa de contenedores e incidencias</h3>'
+        + '<p class="txt-muted" style="margin-bottom:10px">Hacé click en un contenedor del mapa '
+        + 'para seleccionarlo. Los contenedores con problemas reportados aparecen con un anillo rojo.</p>'
+        + '<div id="mapa-incidencias" class="mapa mapa-grande"></div>'
+        + '<div class="sel-contenedor">'
+        + '<span id="cont-elegido" class="txt-muted">Ningún contenedor seleccionado.</span>'
+        + '<button class="btn" id="btn-reportar" onclick="abrirReporte()" disabled>Reportar problema</button>'
+        + '</div></div>';
+
+        if (esAdmin) {
+            html += '<h2 class="sec-titulo">Incidencias activas</h2>'
+                 + '<div id="lista-incidencias"></div>'
+                 + '<h2 class="sec-titulo">Historial de incidencias resueltas</h2>'
+                 + '<div id="historial-incidencias"></div>';
+        } else {
+            html += '<h2 class="sec-titulo">Problemas reportados</h2>'
+                 + '<div id="lista-incidencias"></div>';
+        }
+        return html;
+    }
+
+    function plantillaInstalaciones() {
+        return ''
+        + '<div class="panel"><h3>Nueva instalación</h3>'
+        + '<form id="form-instalacion" class="form-inline">'
+        + '<div><label>Nombre</label><input type="text" id="i-nombre" required></div>'
+        + '<div><label>Dirección</label><input type="text" id="i-direccion" required></div>'
+        + '<div><label>Tipo</label><select id="i-tipo">'
+        + '<option value="acopio">Centro de acopio</option>'
+        + '<option value="clasificacion">Planta de clasificación</option>'
+        + '<option value="vertedero">Vertedero</option></select></div>'
+        + '<div><label>Capacidad máxima (toneladas)</label><input type="number" id="i-capacidad" min="1" value="100" required></div>'
+        + '<div><label>Tipo de residuo</label><select id="i-residuo">'
+        + '<option value="mezclado">Mezclado</option>'
+        + '<option value="reciclable">Reciclable</option>'
+        + '<option value="ambos">Ambos</option></select></div>'
+        + '<div><label>Estado</label><select id="i-estado">'
+        + '<option value="operativa">Operativa</option>'
+        + '<option value="mantenimiento">Mantenimiento</option>'
+        + '<option value="fuera_servicio">Fuera de servicio</option></select></div>'
+        + '<div class="full"><label>Ubicación (hacé click en el mapa para marcarla)</label>'
+        + '<div id="mapa-inst-crear" class="mapa"></div>'
+        + '<p class="mapa-coord" id="i-coord">Sin ubicación seleccionada.</p></div>'
+        + '<div class="full"><button type="submit" class="btn">Agregar instalación</button></div>'
+        + '</form><p class="msg" id="i-msg"></p></div>'
+        + '<h2 class="sec-titulo">Instalaciones en el mapa</h2>'
+        + '<div class="leyenda">'
+        + '<span><i style="background:#0d8ecf"></i> Centro de acopio</span>'
+        + '<span><i style="background:#8e24aa"></i> Planta de clasificación</span>'
+        + '<span><i style="background:#6d4c41"></i> Vertedero</span>'
+        + '</div>'
+        + '<div id="mapa-inst-listado" class="mapa mapa-grande"></div>'
+        + '<table class="tabla"><thead><tr><th>ID</th><th>Nombre</th><th>Tipo</th>'
+        + '<th>Dirección</th><th>Capacidad</th><th>Residuo</th><th>Estado</th>'
+        + '<th>Acción</th></tr></thead><tbody id="tabla-instalaciones"></tbody></table>'
+        + '<h2 class="sec-titulo">Inventario por instalación</h2>'
+        + '<div class="panel"><h3>Nuevo ítem de inventario</h3>'
+        + '<form id="form-maquinaria" class="form-inline">'
+        + '<div><label>Nombre</label><input type="text" id="m-nombre" required></div>'
+        + '<div><label>Categoría</label><select id="m-categoria">'
+        + '<option value="maquinaria">Maquinaria</option>'
+        + '<option value="herramienta">Herramienta</option>'
+        + '<option value="repuesto">Repuesto</option></select></div>'
+        + '<div><label>Estado</label><select id="m-estado">'
+        + '<option value="operativa">Operativa</option>'
+        + '<option value="mantenimiento">Mantenimiento</option>'
+        + '<option value="rota">Rota</option></select></div>'
+        + '<div><label>Cantidad</label><input type="number" id="m-cantidad" min="1" value="1" required></div>'
+        + '<div class="full"><label>Instalación</label><select id="m-instalacion"></select></div>'
+        + '<div class="full"><button type="submit" class="btn">Agregar al inventario</button></div>'
+        + '</form><p class="msg" id="m-msg"></p></div>'
+        + '<div id="panel-inventario"></div>';
+    }
+
+    function plantillaFlotas() {
+        return ''
+        + '<div class="panel"><h3>Nueva flota</h3>'
+        + '<form id="form-flota" class="form-inline">'
+        + '<div><label>Nombre</label><input type="text" id="f-nombre" required></div>'
+        + '<div><label>Zona</label><input type="text" id="f-zona"></div>'
+        + '<div class="full"><button type="submit" class="btn">Crear flota</button></div>'
+        + '</form><p class="msg" id="f-msg"></p></div>'
+        + '<div id="panel-flotas"></div>';
+    }
+
+    // Muestra/oculta el selector de especialidad según el rol elegido.
+    function toggleEspecialidad() {
+        const rol = document.getElementById('u-rol').value;
+        document.getElementById('wrap-especialidad').style.display =
+            (rol === 'operario') ? 'block' : 'none';
+    }
+
+    // =============================================================
+    //  USUARIOS (listado + alta + eliminar)
+    // =============================================================
+    async function cargarUsuarios() {
+        const tbody = document.getElementById('tabla-usuarios');
+        const esAdmin = usuarioActual && usuarioActual.rol === 'administrador';
+        try {
+            const resp = await fetchGet(API_USUARIOS + '/usuarios');
+            const usuarios = await resp.json();
+            tbody.innerHTML = usuarios.map(function (u) {
+                let accion = '<button class="btn-editar" onclick="editarUsuario(' + u.id + ')">Editar</button>';
+                if (esAdmin && u.id !== usuarioActual.id) {
+                    accion += ' <button class="btn-eliminar" onclick="eliminarUsuario(' +
+                        u.id + ", '" + u.nombre.replace(/'/g, "\\'") + "')" + '">Eliminar</button>';
+                }
+                // Mostramos rol + especialidad si es operario
+                let rolTxt = u.rol;
+                if (u.rol === 'operario' && u.especialidad) rolTxt += ' · ' + u.especialidad;
+                return '<tr><td>' + u.id + '</td><td>' + u.nombre + '</td><td>' +
+                    u.email + '</td><td>' + rolTxt + '</td><td>' + accion + '</td></tr>';
+            }).join('');
+        } catch (err) {
+            tbody.innerHTML = '<tr><td colspan="5">Error al conectar con API Usuarios.</td></tr>';
+        }
+
+        // Enganchamos el form de alta (se recreó con la plantilla)
+        const form = document.getElementById('form-usuario');
+        if (form) form.onsubmit = altaUsuario;
+    }
+
+    async function altaUsuario(e) {
+        e.preventDefault();
+        const msg = document.getElementById('u-msg');
+        msg.className = 'msg';
+        const rol = document.getElementById('u-rol').value;
+        const datos = {
+            nombre:   document.getElementById('u-nombre').value.trim(),
+            email:    document.getElementById('u-email').value.trim(),
+            password: document.getElementById('u-password').value,
+            rol:      rol,
+        };
+        if (rol === 'operario') {
+            datos.especialidad = document.getElementById('u-especialidad').value;
+        }
+        try {
+            const resp = await fetch(API_USUARIOS + '/usuarios', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos),
+            });
+            const resultado = await resp.json();
+            if (resp.ok) {
+                msg.textContent = 'Usuario agregado.'; msg.classList.add('ok');
+                e.target.reset();
+                toggleEspecialidad();
+                recargarSeccionActual();
+            } else {
+                msg.textContent = resultado.error; msg.classList.add('err');
+            }
+        } catch (err) {
+            msg.textContent = 'Error de conexión.'; msg.classList.add('err');
+        }
+    }
+
+    async function eliminarUsuario(id, nombre) {
+        if (!confirm('¿Seguro que querés eliminar a "' + nombre + '"?')) return;
+        try {
+            const resp = await fetch(API_USUARIOS + '/usuarios/eliminar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id, adminEmail: usuarioActual.email }),
+            });
+            const resultado = await resp.json();
+            if (resp.ok) { recargarSeccionActual(); }
+            else { alert(resultado.error || 'No se pudo eliminar.'); }
+        } catch (err) {
+            alert('Error de conexión al eliminar.');
+        }
+    }
+
+    // =============================================================
+    //  CONTENEDORES (con mapa interactivo Leaflet)
+    // =============================================================
+    // Centro aproximado de Montevideo.
+    const MVD = [-34.9011, -56.1645];
+    let mapaCrear = null, mapaListado = null;   // instancias de mapa
+    let marcadorNuevo = null;                    // pin temporal al crear
+    let coordNueva = { lat: null, lng: null };   // coords elegidas
+    let capaPines = null;                        // capa de pines del listado
+
+    // Colores del pin según estado del contenedor.
+    // Color del pin según la INTEGRIDAD del contenedor (no el llenado).
+    function colorEstado(estado) {
+        if (estado === 'roto') return '#f9a825';  // amarillo
+        return '#1b8536';                          // verde: operativo
+    }
+
+    // Texto legible del nivel de llenado (para los popups del mapa).
+    function textoLlenado(nivel) {
+        return { vacio: 'Vacío', lleno: 'Lleno', desbordado: 'Desbordado' }[nivel] || nivel;
+    }
+
+    // Etiquetas de color para integridad y llenado.
+    function etiquetaIntegridad(estado) {
+        const clase = (estado === 'roto') ? 'bad' : 'ok';
+        const texto = (estado === 'roto') ? 'Roto' : 'Operativo';
+        return '<span class="pill pill-' + clase + '">' + texto + '</span>';
+    }
+
+    function etiquetaLlenado(nivel) {
+        const clases = { vacio: 'ok', lleno: 'warn', desbordado: 'bad' };
+        const textos = { vacio: 'Vacío', lleno: 'Lleno', desbordado: 'Desbordado' };
+        return '<span class="pill pill-' + (clases[nivel] || 'ok') + '">' +
+               (textos[nivel] || nivel) + '</span>';
+    }
+
+    // Crea un ícono de pin de color (div simple, sin imágenes externas).
+    function iconoPin(color) {
+        return L.divIcon({
+            className: 'pin-cont',
+            html: '<span style="background:' + color + '"></span>',
+            iconSize: [18, 18],
+            iconAnchor: [9, 9],
+        });
+    }
+
+    async function cargarContenedores() {
+        const form = document.getElementById('form-contenedor');
+        if (form) form.onsubmit = altaContenedor;
+
+        // Si Leaflet no cargó (CDN bloqueado, sin internet), avisamos claro
+        // en pantalla en vez de dejar los mapas en blanco sin explicación.
+        if (typeof L === 'undefined') {
+            const aviso = '<div class="mapa-error">No se pudo cargar el mapa (Leaflet). ' +
+                'Verificá tu conexión a internet o si una extensión/firewall bloquea ' +
+                '<b>unpkg.com</b> y <b>openstreetmap.org</b>. La tabla de abajo funciona igual.</div>';
+            const mc = document.getElementById('mapa-crear');
+            const ml = document.getElementById('mapa-listado');
+            if (mc) mc.outerHTML = aviso;
+            if (ml) ml.outerHTML = aviso;
+            refrescarContenedores();
+            return;
+        }
+
+        // Creamos los mapas cuando el layout ya está listo. Usamos dos tiempos:
+        // 100ms para crear (el div ya tiene tamaño) y 300ms para invalidateSize
+        // (por si el panel terminó de acomodarse recién ahí).
+        setTimeout(function () {
+            if (document.getElementById('mapa-crear') && !mapaCrear) {
+                mapaCrear = L.map('mapa-crear').setView(MVD, 12);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap', maxZoom: 19,
+                }).addTo(mapaCrear);
+                mapaCrear.on('click', function (e) {
+                    coordNueva.lat = e.latlng.lat;
+                    coordNueva.lng = e.latlng.lng;
+                    if (marcadorNuevo) {
+                        marcadorNuevo.setLatLng(e.latlng);
+                    } else {
+                        marcadorNuevo = L.marker(e.latlng).addTo(mapaCrear);
+                    }
+                    const c = document.getElementById('c-coord');
+                    if (c) c.textContent = 'Ubicación: ' +
+                        e.latlng.lat.toFixed(5) + ', ' + e.latlng.lng.toFixed(5);
+                });
+            }
+
+            if (document.getElementById('mapa-listado') && !mapaListado) {
+                mapaListado = L.map('mapa-listado').setView(MVD, 12);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap', maxZoom: 19,
+                }).addTo(mapaListado);
+                capaPines = L.layerGroup().addTo(mapaListado);
+            }
+
+            refrescarContenedores();
+
+            // Segundo tiempo: recalcular tamaño cuando todo está estable.
+            setTimeout(function () {
+                if (mapaCrear) mapaCrear.invalidateSize();
+                if (mapaListado) mapaListado.invalidateSize();
+            }, 250);
+        }, 100);
+    }
+
+    // Trae los contenedores, llena la tabla y dibuja los pines en el mapa.
+    async function refrescarContenedores() {
+        const tbody = document.getElementById('tabla-contenedores');
+        try {
+            const lista = await (await fetchGet(API_GESTION + '/contenedores')).json();
+
+            if (tbody) {
+                tbody.innerHTML = lista.map(function (c) {
+                    return '<tr><td>' + c.id + '</td><td>' + c.codigo + '</td><td>' +
+                        c.direccion + '</td><td>' + c.tipoResiduo + '</td><td>' +
+                        etiquetaIntegridad(c.estado) + '</td><td>' + etiquetaLlenado(c.nivelLlenado) + '</td><td>' +
+                        '<button class="btn-editar" onclick="editarContenedor(' + c.id + ')">Editar</button> ' +
+                        '<button class="btn-eliminar" onclick="eliminarContenedor(' + c.id + ')">Eliminar</button>' +
+                        '</td></tr>';
+                }).join('');
+            }
+
+            // Pines en el mapa del listado.
+            if (capaPines) {
+                capaPines.clearLayers();
+                lista.forEach(function (c) {
+                    if (c.lat === null || c.lng === null) return;
+                    L.marker([c.lat, c.lng], { icon: iconoPin(colorEstado(c.estado)) })
+                        .bindPopup('<b>' + c.codigo + '</b><br>' + c.direccion +
+                                   '<br>Tipo: ' + c.tipoResiduo +
+                                   '<br>Estado: ' + (c.estado === 'roto' ? 'Roto' : 'Operativo') +
+                                   '<br>Llenado: ' + textoLlenado(c.nivelLlenado))
+                        .addTo(capaPines);
+                });
+            }
+        } catch (err) {
+            if (tbody) tbody.innerHTML = '<tr><td colspan="6">Error al conectar con API Gestión.</td></tr>';
+        }
+    }
+
+    async function altaContenedor(e) {
+        e.preventDefault();
+        const msg = document.getElementById('c-msg');
+        msg.className = 'msg';
+        if (coordNueva.lat === null || coordNueva.lng === null) {
+            msg.textContent = 'Marcá la ubicación en el mapa antes de agregar.'; msg.classList.add('err');
+            return;
+        }
+        const datos = {
+            codigo:      document.getElementById('c-codigo').value.trim(),
+            direccion:   document.getElementById('c-direccion').value.trim(),
+            tipoResiduo: document.getElementById('c-tipo').value,
+            estado:       document.getElementById('c-estado').value,
+            nivelLlenado: document.getElementById('c-llenado').value,
+            lat:         coordNueva.lat,
+            lng:         coordNueva.lng,
+        };
+        try {
+            const resp = await fetch(API_GESTION + '/contenedores', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos),
+            });
+            const r = await leerRespuesta(resp);
+            const resultado = r.datos;
+            if (r.ok) {
+                msg.textContent = 'Contenedor agregado.'; msg.classList.add('ok');
+                e.target.reset();
+                // Limpiamos el pin temporal y las coords.
+                if (marcadorNuevo) { mapaCrear.removeLayer(marcadorNuevo); marcadorNuevo = null; }
+                coordNueva = { lat: null, lng: null };
+                const c = document.getElementById('c-coord');
+                if (c) c.textContent = 'Sin ubicación seleccionada.';
+                refrescarContenedores();
+            } else {
+                msg.textContent = textoError(resultado, 'No se pudo agregar.');
+                msg.classList.add('err');
+            }
+        } catch (err) {
+            msg.textContent = 'Error de conexión.'; msg.classList.add('err');
+        }
+    }
+
+    async function eliminarContenedor(id) {
+        if (!confirm('¿Eliminar este contenedor?')) return;
+        try {
+            const resp = await fetch(API_GESTION + '/contenedores/eliminar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id }),
+            });
+            if (resp.ok) refrescarContenedores();
+            else { const r = await resp.json(); alert(r.error || 'No se pudo eliminar.'); }
+        } catch (err) { alert('Error de conexión.'); }
+    }
+
+    // =============================================================
+    //  CUADRILLAS (dentro de la sección Usuarios)
+    // =============================================================
+    async function cargarCuadrillas() {
+        const tbody = document.getElementById('tabla-cuadrillas');
+        if (!tbody) return;
+
+        // Traemos usuarios (para nombres) y operarios de recolección libres.
+        try { cacheUsuarios = await (await fetchGet(API_USUARIOS + '/usuarios')).json(); } catch (e) { cacheUsuarios = []; }
+        let libres = [];
+        try { libres = await (await fetchGet(API_USUARIOS + '/operarios-libres')).json(); } catch (e) { libres = []; }
+
+        try {
+            const resp = await fetchGet(API_USUARIOS + '/cuadrillas');
+            cacheCuadrillas = await resp.json();
+
+            // Filtro: si venimos de un click en camión, mostramos solo esa cuadrilla.
+            let lista = cacheCuadrillas;
+            const aviso = document.getElementById('cuad-filtro-aviso');
+            if (cuadrillaFiltrada !== null) {
+                lista = cacheCuadrillas.filter(function (c) { return c.id === cuadrillaFiltrada; });
+                if (aviso) aviso.style.display = 'flex';
+            } else if (aviso) {
+                aviso.style.display = 'none';
+            }
+
+            tbody.innerHTML = lista.map(function (c) {
+                const integrantes = c.operarios || [];
+
+                // Lista de integrantes actuales, cada uno con botón "Quitar".
+                let listaInt;
+                if (integrantes.length === 0) {
+                    listaInt = '<span class="txt-muted">Sin integrantes</span>';
+                } else {
+                    listaInt = '<div class="int-lista">' + integrantes.map(function (opId) {
+                        const u = cacheUsuarios.find(function (x) { return x.id === opId; });
+                        const nombre = u ? u.nombre : ('#' + opId);
+                        return '<span class="int-chip">' + nombre +
+                            '<button class="chip-x" title="Quitar" onclick="quitarOperario(' + c.id + ',' + opId + ')">&times;</button></span>';
+                    }).join('') + '</div>';
+                }
+
+                // Selector para agregar un operario libre + botón.
+                let agregar;
+                if (libres.length === 0) {
+                    agregar = '<span class="txt-muted int-nota">No hay operarios de recolección libres.</span>';
+                } else {
+                    const opts = libres.map(function (op) {
+                        return '<option value="' + op.id + '">' + op.nombre + '</option>';
+                    }).join('');
+                    agregar = '<div class="int-agregar"><select id="add-op-' + c.id + '">' + opts + '</select>' +
+                        '<button class="btn-mini" onclick="agregarOperario(' + c.id + ')">Agregar</button></div>';
+                }
+
+                return '<tr><td>' + c.id + '</td><td>' + c.nombre + '</td><td>' +
+                    (c.zona || '—') + '</td><td>' + listaInt + agregar + '</td><td>' +
+                    '<button class="btn-eliminar" onclick="eliminarCuadrilla(' + c.id + ')">Eliminar</button>' +
+                    '</td></tr>';
+            }).join('');
+            if (lista.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="txt-muted">No hay cuadrillas para mostrar.</td></tr>';
+            }
+        } catch (err) {
+            tbody.innerHTML = '<tr><td colspan="5">Error al conectar con API Usuarios.</td></tr>';
+        }
+        const form = document.getElementById('form-cuadrilla');
+        if (form) form.onsubmit = altaCuadrilla;
+    }
+
+    // Agrega el operario seleccionado a la cuadrilla (queda libre de otras).
+    async function agregarOperario(cuadrillaId) {
+        const sel = document.getElementById('add-op-' + cuadrillaId);
+        const operarioId = sel ? sel.value : '';
+        if (!operarioId) { alert('Elegí un operario para agregar.'); return; }
+        try {
+            const resp = await fetch(API_USUARIOS + '/cuadrillas/agregar-operario', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cuadrillaId: cuadrillaId, operarioId: parseInt(operarioId) }),
+            });
+            if (resp.ok) recargarSeccionActual();
+            else { const r = await resp.json(); alert(r.error || 'No se pudo agregar.'); }
+        } catch (err) { alert('Error de conexión.'); }
+    }
+
+    // Quita un operario de la cuadrilla.
+    async function quitarOperario(cuadrillaId, operarioId) {
+        try {
+            const resp = await fetch(API_USUARIOS + '/cuadrillas/quitar-operario', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cuadrillaId: cuadrillaId, operarioId: operarioId }),
+            });
+            if (resp.ok) recargarSeccionActual();
+            else { const r = await resp.json(); alert(r.error || 'No se pudo quitar.'); }
+        } catch (err) { alert('Error de conexión.'); }
+    }
+
+    // Quita el filtro de cuadrilla y recarga la lista completa.
+    function limpiarFiltroCuadrilla() {
+        cuadrillaFiltrada = null;
+        cargarCuadrillas();
+    }
+
+    async function altaCuadrilla(e) {
+        e.preventDefault();
+        const msg = document.getElementById('cu-msg');
+        msg.className = 'msg';
+        const datos = {
+            nombre: document.getElementById('cu-nombre').value.trim(),
+            zona:   document.getElementById('cu-zona').value.trim(),
+        };
+        try {
+            const resp = await fetch(API_USUARIOS + '/cuadrillas', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos),
+            });
+            const resultado = await resp.json();
+            if (resp.ok) {
+                msg.textContent = 'Cuadrilla creada.'; msg.classList.add('ok');
+                e.target.reset(); recargarSeccionActual();
+            } else {
+                msg.textContent = resultado.error; msg.classList.add('err');
+            }
+        } catch (err) {
+            msg.textContent = 'Error de conexión.'; msg.classList.add('err');
+        }
+    }
+
+    async function eliminarCuadrilla(id) {
+        if (!confirm('¿Eliminar esta cuadrilla?')) return;
+        try {
+            const resp = await fetch(API_USUARIOS + '/cuadrillas/eliminar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id }),
+            });
+            if (resp.ok) recargarSeccionActual();
+            else { const r = await resp.json(); alert(r.error || 'No se pudo eliminar.'); }
+        } catch (err) { alert('Error de conexión.'); }
+    }
+
+    // Devuelve el nombre de una cuadrilla por id (usa el cache).
+    function nombreCuadrilla(id) {
+        if (id === null || id === undefined) return '—';
+        const c = cacheCuadrillas.find(function (x) { return x.id === id; });
+        return c ? c.nombre : ('#' + id);
+    }
+
+    // Carga los selects de flota y cuadrilla del formulario de camión.
+    async function cargarFlotasEnSelect() {
+        try {
+            const resp = await fetchGet(API_RECOLECCION + '/flotas');
+            cacheFlotas = await resp.json();
+        } catch (err) { cacheFlotas = []; }
+        const sel = document.getElementById('k-flota');
+        if (sel) {
+            sel.innerHTML = '<option value="">(sin flota)</option>' +
+                cacheFlotas.map(function (f) {
+                    return '<option value="' + f.id + '">' + f.nombre + '</option>';
+                }).join('');
+        }
+    }
+    async function cargarCuadrillasEnSelect() {
+        try {
+            const resp = await fetchGet(API_USUARIOS + '/cuadrillas');
+            cacheCuadrillas = await resp.json();
+        } catch (err) { cacheCuadrillas = []; }
+        const sel = document.getElementById('k-cuadrilla');
+        if (sel) {
+            sel.innerHTML = '<option value="">(sin cuadrilla)</option>' +
+                cacheCuadrillas.map(function (c) {
+                    return '<option value="' + c.id + '">' + c.nombre + '</option>';
+                }).join('');
+        }
+    }
+
+    // =============================================================
+    //  CAMIONES
+    // =============================================================
+    async function cargarCamiones() {
+        const tbody = document.getElementById('tabla-camiones');
+        // Aseguramos tener flotas y cuadrillas en cache para mostrar nombres.
+        if (cacheFlotas.length === 0) { try { cacheFlotas = await (await fetchGet(API_RECOLECCION + '/flotas')).json(); } catch (e) {} }
+        if (cacheCuadrillas.length === 0) { try { cacheCuadrillas = await (await fetchGet(API_USUARIOS + '/cuadrillas')).json(); } catch (e) {} }
+        try {
+            const resp = await fetchGet(API_RECOLECCION + '/camiones');
+            const lista = await resp.json();
+            // Cuadrillas ya usadas por algún camión (para no repetir).
+            const usadas = lista.filter(function (x) { return x.cuadrillaId !== null && x.cuadrillaId !== undefined; })
+                                 .map(function (x) { return x.cuadrillaId; });
+            tbody.innerHTML = lista.map(function (k) {
+                // Selector de cuadrilla: ofrece las libres + la propia del camión.
+                let opcCuad = '<option value="">(sin cuadrilla)</option>' +
+                    cacheCuadrillas.filter(function (c) {
+                        return usadas.indexOf(c.id) === -1 || c.id === k.cuadrillaId;
+                    }).map(function (c) {
+                        const sel = (c.id === k.cuadrillaId) ? ' selected' : '';
+                        return '<option value="' + c.id + '"' + sel + '>' + c.nombre + '</option>';
+                    }).join('');
+                const selectCuad = '<select onchange="asignarCuadrilla(' + k.id + ', this.value)">' + opcCuad + '</select>';
+                // Selector de flota en línea para mover el camión.
+                let opcFlota = '<option value="">(sin flota)</option>' +
+                    cacheFlotas.map(function (f) {
+                        const sel = (f.id === k.flotaId) ? ' selected' : '';
+                        return '<option value="' + f.id + '"' + sel + '>' + f.nombre + '</option>';
+                    }).join('');
+                const selectFlota = '<select onchange="moverAFlota(' + k.id + ', this.value)">' + opcFlota + '</select>';
+                return '<tr><td>' + k.id + '</td><td>' + k.patente + '</td><td>' +
+                    k.modelo + '</td><td>' + k.estado + '</td><td>' + k.disponibilidad + '</td><td>' +
+                    selectFlota + '</td><td>' + selectCuad + '</td><td>' +
+                    '<button class="btn-editar" onclick="editarCamion(' + k.id + ')">Editar</button> ' +
+                    '<button class="btn-eliminar" onclick="eliminarCamion(' + k.id + ')">Eliminar</button>' +
+                    '</td></tr>';
+            }).join('');
+        } catch (err) {
+            tbody.innerHTML = '<tr><td colspan="8">Error al conectar con API Recolección.</td></tr>';
+        }
+        const form = document.getElementById('form-camion');
+        if (form) form.onsubmit = altaCamion;
+    }
+
+    async function altaCamion(e) {
+        e.preventDefault();
+        const msg = document.getElementById('k-msg');
+        msg.className = 'msg';
+        const datos = {
+            patente:        document.getElementById('k-patente').value.trim(),
+            modelo:         document.getElementById('k-modelo').value.trim(),
+            estado:         document.getElementById('k-estado').value,
+            disponibilidad: document.getElementById('k-disp').value,
+            flotaId:        document.getElementById('k-flota').value,
+            cuadrillaId:    document.getElementById('k-cuadrilla').value,
+        };
+        try {
+            const resp = await fetch(API_RECOLECCION + '/camiones', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos),
+            });
+            const resultado = await resp.json();
+            if (resp.ok) {
+                msg.textContent = 'Camión agregado.'; msg.classList.add('ok');
+                e.target.reset(); recargarSeccionActual();
+            } else {
+                msg.textContent = resultado.error; msg.classList.add('err');
+            }
+        } catch (err) {
+            msg.textContent = 'Error de conexión.'; msg.classList.add('err');
+        }
+    }
+
+    async function asignarCuadrilla(camionId, cuadrillaId) {
+        try {
+            const resp = await fetch(API_RECOLECCION + '/camiones/asignar-cuadrilla', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: camionId, cuadrillaId: cuadrillaId || null }),
+            });
+            if (resp.ok) { recargarSeccionActual(); }
+            else { const r = await resp.json(); alert(r.error || 'No se pudo asignar.'); }
+        } catch (err) { alert('Error de conexión.'); }
+    }
+
+    async function moverAFlota(camionId, flotaId) {
+        try {
+            const resp = await fetch(API_RECOLECCION + '/camiones/asignar-flota', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: camionId, flotaId: flotaId || null }),
+            });
+            if (!resp.ok) { const r = await resp.json(); alert(r.error || 'No se pudo mover.'); }
+        } catch (err) { alert('Error de conexión.'); }
+    }
+
+    async function eliminarCamion(id) {
+        if (!confirm('¿Eliminar este camión?')) return;
+        try {
+            const resp = await fetch(API_RECOLECCION + '/camiones/eliminar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id }),
+            });
+            if (resp.ok) recargarSeccionActual();
+            else { const r = await resp.json(); alert(r.error || 'No se pudo eliminar.'); }
+        } catch (err) { alert('Error de conexión.'); }
+    }
+
+    // =============================================================
+    //  FLOTAS (panel gráfico)
+    // =============================================================
+    async function altaFlota(e) {
+        e.preventDefault();
+        const msg = document.getElementById('f-msg');
+        msg.className = 'msg';
+        const datos = {
+            nombre: document.getElementById('f-nombre').value.trim(),
+            zona:   document.getElementById('f-zona').value.trim(),
+        };
+        try {
+            const resp = await fetch(API_RECOLECCION + '/flotas', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos),
+            });
+            const resultado = await resp.json();
+            if (resp.ok) {
+                msg.textContent = 'Flota creada.'; msg.classList.add('ok');
+                e.target.reset(); recargarSeccionActual();
+            } else {
+                msg.textContent = resultado.error; msg.classList.add('err');
+            }
+        } catch (err) {
+            msg.textContent = 'Error de conexión.'; msg.classList.add('err');
+        }
+    }
+
+    // Dibuja el panel: una TABLA por flota que engloba sus camiones.
+    // Al clickear un camión, se navega a la cuadrilla asignada (sección Usuarios).
+    async function cargarPanelFlotas() {
+        const cont = document.getElementById('panel-flotas');
+        const form = document.getElementById('form-flota');
+        if (form) form.onsubmit = altaFlota;
+
+        try {
+            cacheFlotas     = await (await fetchGet(API_RECOLECCION + '/flotas')).json();
+            cacheCuadrillas = await (await fetchGet(API_USUARIOS + '/cuadrillas')).json();
+            const camiones  = await (await fetchGet(API_RECOLECCION + '/camiones')).json();
+
+            let html = cacheFlotas.map(function (f) {
+                const suyos = camiones.filter(function (k) { return k.flotaId === f.id; });
+                // Camiones que NO están en ninguna flota (para el selector de agregar)
+                const libres = camiones.filter(function (k) { return k.flotaId === null || k.flotaId === undefined; });
+
+                let filas;
+                if (suyos.length === 0) {
+                    filas = '<tr><td colspan="4" class="flota-vacia">Sin camiones en esta flota</td></tr>';
+                } else {
+                    filas = suyos.map(function (k) {
+                        const cuadTxt = (k.cuadrillaId === null || k.cuadrillaId === undefined)
+                            ? '<span class="txt-muted">Sin cuadrilla</span>'
+                            : '<a class="link-cuad" onclick="irACuadrilla(' + k.cuadrillaId + ')">' +
+                              nombreCuadrilla(k.cuadrillaId) + '</a>';
+                        return '<tr class="fila-camion" onclick="clickCamionFlota(event, ' + k.id + ', ' +
+                            (k.cuadrillaId === null ? 'null' : k.cuadrillaId) + ", '" + k.patente.replace(/'/g, '') + "')" + '">' +
+                            '<td>' + k.patente + '</td><td>' + k.modelo + '</td><td>' + k.estado + '</td><td>' +
+                            cuadTxt + '</td></tr>';
+                    }).join('');
+                }
+
+                // Selector para agregar un camión libre a esta flota.
+                const opcionesLibres = libres.length
+                    ? libres.map(function (k) { return '<option value="' + k.id + '">' + k.patente + ' - ' + k.modelo + '</option>'; }).join('')
+                    : '';
+                const agregar = libres.length
+                    ? '<div class="flota-agregar"><select id="add-flota-' + f.id + '">' +
+                      '<option value="">Agregar camión sin flota…</option>' + opcionesLibres + '</select>' +
+                      '<button class="btn-mini" onclick="agregarCamionAFlota(' + f.id + ')">Agregar</button></div>'
+                    : '<p class="txt-muted flota-nota">No hay camiones sin flota para agregar.</p>';
+
+                return '<div class="flota-bloque">' +
+                    '<div class="flota-head"><h3>' + f.nombre + '</h3>' +
+                    '<span class="flota-zona">' + (f.zona || '') + '</span>' +
+                    '<button class="btn-eliminar" onclick="eliminarFlota(' + f.id + ')">Eliminar</button></div>' +
+                    '<table class="tabla"><thead><tr><th>Patente</th><th>Modelo</th><th>Estado</th>' +
+                    '<th>Cuadrilla</th></tr></thead><tbody>' + filas + '</tbody></table>' +
+                    agregar + '</div>';
+            }).join('');
+
+            cont.innerHTML = html || '<p class="flota-vacia">No hay flotas. Creá una arriba.</p>';
+        } catch (err) {
+            cont.innerHTML = '<p class="flota-vacia">Error al conectar con las APIs.</p>';
+        }
+    }
+
+    // Click en una fila de camión: si tocaste el link de la cuadrilla, ese link
+    // ya maneja la navegación. Si tocaste el resto de la fila, vamos a la
+    // cuadrilla igual (o avisamos si no tiene).
+    function clickCamionFlota(event, camionId, cuadrillaId, patente) {
+        if (event.target.classList.contains('link-cuad')) return; // lo maneja el link
+        if (cuadrillaId === null || cuadrillaId === undefined) {
+            alert('El camión ' + patente + ' no tiene cuadrilla asignada.');
+            return;
+        }
+        irACuadrilla(cuadrillaId);
+    }
+
+    // Agrega un camión "libre" (sin flota) a una flota concreta.
+    async function agregarCamionAFlota(flotaId) {
+        const sel = document.getElementById('add-flota-' + flotaId);
+        const camionId = sel ? sel.value : '';
+        if (!camionId) { alert('Elegí un camión para agregar.'); return; }
+        try {
+            const resp = await fetch(API_RECOLECCION + '/camiones/asignar-flota', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: parseInt(camionId), flotaId: flotaId }),
+            });
+            if (resp.ok) recargarSeccionActual();
+            else { const r = await resp.json(); alert(r.error || 'No se pudo agregar.'); }
+        } catch (err) { alert('Error de conexión.'); }
+    }
+
+    // Navega a la sección Usuarios y muestra SOLO la cuadrilla indicada.
+    function irACuadrilla(cuadrillaId) {
+        cuadrillaFiltrada = cuadrillaId;
+        // Simular click en el ítem de menú "Usuarios"
+        mostrarSeccion('usuarios');
+        const nav = document.getElementById('nav-usuarios');
+        if (nav) {
+            document.querySelectorAll('.nav-item').forEach(function (a) { a.classList.remove('activo'); });
+            nav.classList.add('activo');
+        }
+    }
+
+    async function eliminarFlota(id) {
+        if (!confirm('¿Eliminar esta flota?')) return;
+        try {
+            const resp = await fetch(API_RECOLECCION + '/flotas/eliminar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id }),
+            });
+            if (resp.ok) recargarSeccionActual();
+            else { const r = await resp.json(); alert(r.error || 'No se pudo eliminar.'); }
+        } catch (err) { alert('Error de conexión.'); }
+    }
+
+    // =============================================================
+    //  RUTAS DE RECOLECCIÓN (admin)
+    // =============================================================
+    let cacheRutas = [];
+    let cacheContRutas = [];
+
+    function plantillaRutas() {
+        return ''
+        + '<div class="panel"><h3>Nueva ruta</h3>'
+        + '<form id="form-ruta" class="form-inline">'
+        + '<div><label>Nombre</label><input type="text" id="rt-nombre" required></div>'
+        + '<div><label>Zona</label><input type="text" id="rt-zona"></div>'
+        + '<div><label>Día</label><select id="rt-dia">'
+        + '<option value="lunes">Lunes</option><option value="martes">Martes</option>'
+        + '<option value="miercoles">Miércoles</option><option value="jueves">Jueves</option>'
+        + '<option value="viernes">Viernes</option><option value="sabado">Sábado</option>'
+        + '<option value="domingo">Domingo</option></select></div>'
+        + '<div><label>Turno</label><select id="rt-turno">'
+        + '<option value="matutino">Matutino</option>'
+        + '<option value="vespertino">Vespertino</option>'
+        + '<option value="nocturno">Nocturno</option></select></div>'
+        + '<div class="full"><label>Cuadrilla responsable</label><select id="rt-cuadrilla"></select></div>'
+        + '<div class="full"><button type="submit" class="btn">Crear ruta</button></div>'
+        + '</form><p class="msg" id="rt-msg"></p></div>'
+        + '<div id="panel-rutas"></div>';
+    }
+
+    async function cargarRutas() {
+        const form = document.getElementById('form-ruta');
+        if (form) form.onsubmit = altaRuta;
+
+        try {
+            cacheRutas      = await (await fetchGet(API_RECOLECCION + '/rutas')).json();
+            cacheCuadrillas = await (await fetchGet(API_USUARIOS + '/cuadrillas')).json();
+            cacheContRutas  = await (await fetchGet(API_GESTION + '/contenedores')).json();
+        } catch (e) {
+            document.getElementById('panel-rutas').innerHTML =
+                '<p class="flota-vacia">Error al conectar con las APIs.</p>';
+            return;
+        }
+
+        // Selector de cuadrilla del formulario.
+        const sel = document.getElementById('rt-cuadrilla');
+        if (sel) {
+            sel.innerHTML = '<option value="">(sin asignar)</option>' +
+                cacheCuadrillas.map(function (c) {
+                    return '<option value="' + c.id + '">' + c.nombre + '</option>';
+                }).join('');
+        }
+
+        // Una tarjeta por ruta, con su recorrido y el selector para sumar paradas.
+        const cont = document.getElementById('panel-rutas');
+        if (cacheRutas.length === 0) {
+            cont.innerHTML = '<p class="flota-vacia">No hay rutas creadas todavía.</p>';
+            return;
+        }
+
+        cont.innerHTML = cacheRutas.map(function (r) {
+            // Cuadrilla responsable (selector para reasignar)
+            const opcCuad = '<option value="">(sin asignar)</option>' +
+                cacheCuadrillas.map(function (c) {
+                    return '<option value="' + c.id + '"' +
+                        (c.id === r.cuadrillaId ? ' selected' : '') + '>' + c.nombre + '</option>';
+                }).join('');
+
+            // Paradas del recorrido
+            const ids = r.contenedores || [];
+            let paradas;
+            if (ids.length === 0) {
+                paradas = '<tr><td colspan="4" class="flota-vacia">Sin contenedores en el recorrido</td></tr>';
+            } else {
+                paradas = ids.map(function (cid, i) {
+                    const c = cacheContRutas.find(function (x) { return x.id === cid; });
+                    if (!c) return '';
+                    return '<tr><td>' + (i + 1) + '</td><td>' + c.codigo + '</td><td>' +
+                        c.direccion + '</td><td>' +
+                        '<button class="btn-eliminar" onclick="quitarDeRuta(' + r.id + ',' + cid + ')">Quitar</button>' +
+                        '</td></tr>';
+                }).join('');
+            }
+
+            // Contenedores que todavía no están en esta ruta
+            const libres = cacheContRutas.filter(function (c) { return ids.indexOf(c.id) === -1; });
+            const agregar = libres.length
+                ? '<div class="flota-agregar"><select id="add-ruta-' + r.id + '">' +
+                  libres.map(function (c) {
+                      return '<option value="' + c.id + '">' + c.codigo + ' — ' + c.direccion + '</option>';
+                  }).join('') + '</select>' +
+                  '<button class="btn-mini" onclick="agregarARuta(' + r.id + ')">Agregar parada</button></div>'
+                : '<p class="txt-muted flota-nota">Todos los contenedores ya están en esta ruta.</p>';
+
+            return '<div class="flota-bloque">' +
+                '<div class="flota-head"><h3>' + r.nombre + '</h3>' +
+                '<span class="flota-zona">' + r.diaLegible + ' · ' + r.turno +
+                (r.zona ? ' · ' + r.zona : '') + '</span>' +
+                '<select onchange="asignarCuadrillaRuta(' + r.id + ', this.value)">' + opcCuad + '</select> ' +
+                '<button class="btn-editar" onclick="editarRuta(' + r.id + ')">Editar</button> ' +
+                '<button class="btn-eliminar" onclick="eliminarRuta(' + r.id + ')">Eliminar</button></div>' +
+                '<table class="tabla"><thead><tr><th>#</th><th>Contenedor</th>' +
+                '<th>Dirección</th><th>Acción</th></tr></thead><tbody>' + paradas + '</tbody></table>' +
+                agregar + '</div>';
+        }).join('');
+    }
+
+    async function altaRuta(e) {
+        e.preventDefault();
+        const msg = document.getElementById('rt-msg');
+        msg.className = 'msg';
+        const datos = {
+            nombre:      document.getElementById('rt-nombre').value.trim(),
+            zona:        document.getElementById('rt-zona').value.trim(),
+            diaSemana:   document.getElementById('rt-dia').value,
+            turno:       document.getElementById('rt-turno').value,
+            cuadrillaId: document.getElementById('rt-cuadrilla').value,
+        };
+        try {
+            const resp = await fetch(API_RECOLECCION + '/rutas', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos),
+            });
+            const res = await leerRespuesta(resp);
+            if (res.ok) {
+                msg.textContent = 'Ruta creada.'; msg.classList.add('ok');
+                e.target.reset(); recargarSeccionActual();
+            } else {
+                msg.textContent = textoError(res.datos, 'No se pudo crear.');
+                msg.classList.add('err');
+            }
+        } catch (err) { msg.textContent = 'Error de conexión.'; msg.classList.add('err'); }
+    }
+
+    async function eliminarRuta(id) {
+        if (!confirm('¿Eliminar esta ruta y su recorrido?')) return;
+        await accionRuta('/rutas/eliminar', { id: id });
+    }
+
+    async function agregarARuta(rutaId) {
+        const sel = document.getElementById('add-ruta-' + rutaId);
+        if (!sel || !sel.value) { alert('Elegí un contenedor.'); return; }
+        await accionRuta('/rutas/agregar-contenedor',
+                         { rutaId: rutaId, contenedorId: parseInt(sel.value) });
+    }
+
+    async function quitarDeRuta(rutaId, contenedorId) {
+        await accionRuta('/rutas/quitar-contenedor',
+                         { rutaId: rutaId, contenedorId: contenedorId });
+    }
+
+    async function asignarCuadrillaRuta(id, cuadrillaId) {
+        const r = cacheRutas.find(function (x) { return x.id === id; });
+        if (!r) return;
+        await accionRuta('/rutas/modificar', {
+            id: id, nombre: r.nombre, zona: r.zona,
+            diaSemana: r.diaSemana, turno: r.turno,
+            cuadrillaId: cuadrillaId || null,
+        });
+    }
+
+    // Helper común: manda la acción y recarga la sección si salió bien.
+    async function accionRuta(ruta, datos) {
+        try {
+            const resp = await fetch(API_RECOLECCION + ruta, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos),
+            });
+            const res = await leerRespuesta(resp);
+            if (res.ok) recargarSeccionActual();
+            else alert(textoError(res.datos, 'No se pudo completar la acción.'));
+        } catch (e) { alert('Error de conexión.'); }
+    }
+
+    function editarRuta(id) {
+        const r = cacheRutas.find(function (x) { return x.id === id; });
+        if (!r) return;
+        const sel = function (v, o) { return v === o ? ' selected' : ''; };
+        const dias = ['lunes','martes','miercoles','jueves','viernes','sabado','domingo'];
+        const nombresDias = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+        const cuerpo =
+            '<div class="form-modal">'
+            + '<label>Nombre</label><input type="text" id="e-rtnombre" value="' + r.nombre + '">'
+            + '<label>Zona</label><input type="text" id="e-rtzona" value="' + (r.zona || '') + '">'
+            + '<label>Día</label><select id="e-rtdia">'
+            + dias.map(function (d, i) {
+                return '<option value="' + d + '"' + sel(r.diaSemana, d) + '>' + nombresDias[i] + '</option>';
+              }).join('') + '</select>'
+            + '<label>Turno</label><select id="e-rtturno">'
+            + '<option value="matutino"' + sel(r.turno, 'matutino') + '>Matutino</option>'
+            + '<option value="vespertino"' + sel(r.turno, 'vespertino') + '>Vespertino</option>'
+            + '<option value="nocturno"' + sel(r.turno, 'nocturno') + '>Nocturno</option></select>'
+            + '<button class="btn" id="modal-guardar">Guardar cambios</button></div>';
+
+        abrirModal('Editar ruta', cuerpo, async function () {
+            const datos = {
+                id: id,
+                nombre:    document.getElementById('e-rtnombre').value.trim(),
+                zona:      document.getElementById('e-rtzona').value.trim(),
+                diaSemana: document.getElementById('e-rtdia').value,
+                turno:     document.getElementById('e-rtturno').value,
+                cuadrillaId: r.cuadrillaId,
+            };
+            try {
+                const resp = await fetch(API_RECOLECCION + '/rutas/modificar', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(datos),
+                });
+                const res = await leerRespuesta(resp);
+                if (res.ok) { cerrarModal(); recargarSeccionActual(); }
+                else modalError(textoError(res.datos, 'No se pudo modificar.'));
+            } catch (e) { modalError('Error de conexión.'); }
+        });
+    }
+
+    // =============================================================
+    //  PANELES DE OPERARIO (bloque C de requerimientos 3.1.2.x)
+    // =============================================================
+
+    // Panel del operario de RECOLECCIÓN: su cuadrilla, su camión y sus rutas.
+    async function panelRecoleccion() {
+        const cont = document.getElementById('content');
+        cont.innerHTML = '<div class="op-panel"><h2 class="op-titulo">Mi jornada</h2>' +
+            '<p class="txt-muted">Cargando tu información…</p></div>';
+
+        // El operario guarda el id de su cuadrilla en el campo "cuadrilla".
+        const cuadrillaId = usuarioActual.cuadrilla ? parseInt(usuarioActual.cuadrilla) : null;
+        let html = '<div class="op-panel"><h2 class="op-titulo">Mi jornada</h2>';
+
+        if (cuadrillaId === null || isNaN(cuadrillaId)) {
+            html += '<div class="op-aviso">Todavía no estás asignado a ninguna cuadrilla. ' +
+                    'Consultá con la administración.</div></div>';
+            cont.innerHTML = html;
+            return;
+        }
+
+        // --- Cuadrilla y compañeros ---
+        let cuadrilla = null, companeros = [];
+        try {
+            const cuads = await (await fetchGet(API_USUARIOS + '/cuadrillas')).json();
+            cuadrilla = cuads.find(function (c) { return c.id === cuadrillaId; });
+            const usuarios = await (await fetchGet(API_USUARIOS + '/usuarios')).json();
+            if (cuadrilla) {
+                companeros = (cuadrilla.operarios || [])
+                    .filter(function (id) { return id !== usuarioActual.id; })
+                    .map(function (id) {
+                        const u = usuarios.find(function (x) { return x.id === id; });
+                        return u ? u.nombre : ('#' + id);
+                    });
+            }
+        } catch (e) {}
+
+        html += '<div class="op-cards">';
+        html += '<div class="op-card"><span class="material-icons-outlined">groups</span>' +
+                '<h3>Mi cuadrilla</h3><p class="op-dato">' +
+                (cuadrilla ? cuadrilla.nombre : 'Sin datos') + '</p>' +
+                '<p class="txt-muted">' + (cuadrilla && cuadrilla.zona ? cuadrilla.zona : '') + '</p>' +
+                (companeros.length
+                    ? '<p class="txt-muted">Compañeros: ' + companeros.join(', ') + '</p>'
+                    : '<p class="txt-muted">Sos el único integrante</p>') +
+                '</div>';
+
+        // --- Camión asignado a la cuadrilla (3.1.2.1.2) ---
+        let camion = null;
+        try {
+            const camiones = await (await fetchGet(API_RECOLECCION + '/camiones')).json();
+            camion = camiones.find(function (k) { return k.cuadrillaId === cuadrillaId; });
+        } catch (e) {}
+
+        html += '<div class="op-card"><span class="material-icons-outlined">local_shipping</span>' +
+                '<h3>Mi camión</h3>';
+        if (camion) {
+            html += '<p class="op-dato">' + camion.patente + '</p>' +
+                    '<p class="txt-muted">' + camion.modelo + '</p>' +
+                    '<p>' + etiquetaEstadoCamion(camion.estado) + ' ' +
+                    etiquetaDisponibilidad(camion.disponibilidad) + '</p>';
+        } else {
+            html += '<p class="txt-muted">No hay ningún camión asignado a tu cuadrilla.</p>';
+        }
+        html += '</div></div>';
+
+        // --- Rutas asignadas (3.1.2.1.1) ---
+        html += '<h2 class="sec-titulo">Mis rutas de recolección</h2><div id="op-rutas">' +
+                '<p class="txt-muted">Cargando rutas…</p></div>';
+        html += '</div>';
+        cont.innerHTML = html;
+
+        // Dibujar las rutas con su recorrido de contenedores.
+        try {
+            const rutas = await (await fetchGet(API_RECOLECCION + '/rutas/cuadrilla?id=' + cuadrillaId)).json();
+            const contenedores = await (await fetchGet(API_GESTION + '/contenedores')).json();
+            const divRutas = document.getElementById('op-rutas');
+            if (rutas.length === 0) {
+                divRutas.innerHTML = '<p class="flota-vacia">Todavía no tenés rutas asignadas.</p>';
+            } else {
+                divRutas.innerHTML = rutas.map(function (r) {
+                    const paradas = (r.contenedores || []).map(function (cid, i) {
+                        const c = contenedores.find(function (x) { return x.id === cid; });
+                        if (!c) return '';
+                        return '<li><b>' + (i + 1) + '.</b> ' + c.codigo + ' — ' + c.direccion +
+                               ' ' + etiquetaLlenado(c.nivelLlenado) + '</li>';
+                    }).join('');
+                    return '<div class="op-ruta">' +
+                        '<div class="op-ruta-cab"><h3>' + r.nombre + '</h3>' +
+                        '<span class="pill pill-ok">' + r.diaLegible + '</span> ' +
+                        '<span class="pill pill-warn">' + r.turno + '</span>' +
+                        (r.zona ? '<span class="txt-muted">' + r.zona + '</span>' : '') + '</div>' +
+                        (paradas
+                            ? '<ol class="op-paradas">' + paradas + '</ol>'
+                            : '<p class="txt-muted">Esta ruta todavía no tiene contenedores cargados.</p>') +
+                        '</div>';
+                }).join('');
+            }
+        } catch (e) {
+            document.getElementById('op-rutas').innerHTML =
+                '<p class="flota-vacia">No se pudieron cargar las rutas.</p>';
+        }
+    }
+
+    function etiquetaEstadoCamion(estado) {
+        const clase = (estado === 'mantenimiento') ? 'warn' : 'ok';
+        const texto = (estado === 'mantenimiento') ? 'En mantenimiento' : 'Operativo';
+        return '<span class="pill pill-' + clase + '">' + texto + '</span>';
+    }
+
+    function etiquetaDisponibilidad(disp) {
+        const clase = (disp === 'en_ruta') ? 'warn' : 'ok';
+        const texto = (disp === 'en_ruta') ? 'En ruta' : 'Disponible';
+        return '<span class="pill pill-' + clase + '">' + texto + '</span>';
+    }
+
+    // Panel común de CLASIFICACIÓN y VERTEDERO: su instalación + inventario.
+    // Cambia solo el texto según la especialidad (requerimientos 3.1.2.2.x y 3.1.2.3.x).
+    async function panelInstalacion(especialidad) {
+        const cont = document.getElementById('content');
+        const esVertedero = (especialidad === 'vertedero');
+        const titulo = esVertedero ? 'Mi vertedero' : 'Mi planta de clasificación';
+
+        let html = '<div class="op-panel"><h2 class="op-titulo">' + titulo + '</h2>';
+
+        const instId = usuarioActual.instalacionId || null;
+        if (!instId) {
+            html += '<div class="op-aviso">Todavía no estás asignado a ninguna instalación. ' +
+                    'Consultá con la administración.</div></div>';
+            cont.innerHTML = html;
+            return;
+        }
+
+        let inst = null, items = [];
+        try {
+            const insts = await (await fetchGet(API_GESTION + '/instalaciones')).json();
+            inst = insts.find(function (x) { return x.id === instId; });
+            const maq = await (await fetchGet(API_GESTION + '/maquinaria')).json();
+            items = maq.filter(function (m) { return m.instalacionId === instId; });
+        } catch (e) {}
+
+        if (!inst) {
+            html += '<div class="op-aviso">No se encontró tu instalación asignada.</div></div>';
+            cont.innerHTML = html;
+            return;
+        }
+
+        // --- Estado e información de la instalación ---
+        const pct = inst.porcentaje || 0;
+        const claseBarra = pct >= 90 ? 'bad' : (pct >= 70 ? 'warn' : 'ok');
+
+        html += '<div class="op-cards">';
+        html += '<div class="op-card ancho"><span class="material-icons-outlined">factory</span>' +
+                '<h3>' + inst.nombre + '</h3>' +
+                '<p class="txt-muted">' + inst.direccion + '</p>' +
+                '<p>' + etiquetaEstadoInstalacion(inst.estado) + '</p>' +
+                '<p class="txt-muted">Procesa residuos: <b>' + inst.tipoResiduo + '</b></p>' +
+                '</div>';
+
+        html += '<div class="op-card ancho"><span class="material-icons-outlined">donut_large</span>' +
+                '<h3>' + (esVertedero ? 'Capacidad y llenado' : 'Ocupación actual') + '</h3>' +
+                '<p class="op-dato">' + inst.ocupacionActual + ' / ' + inst.capacidadMaxima + ' t</p>' +
+                '<div class="barra"><div class="barra-relleno barra-' + claseBarra +
+                '" style="width:' + Math.min(pct, 100) + '%"></div></div>' +
+                '<p class="txt-muted">' + pct + '% de la capacidad' +
+                (pct >= 90 ? ' — <b>capacidad crítica</b>' : (pct >= 70 ? ' — se acerca al límite' : '')) +
+                '</p></div>';
+        html += '</div>';
+
+        // --- Inventario de maquinaria (3.1.2.2.2 y 3.1.2.3.2) ---
+        html += '<h2 class="sec-titulo">' +
+                (esVertedero ? 'Maquinaria pesada asignada' : 'Maquinaria y herramientas') + '</h2>';
+        if (items.length === 0) {
+            html += '<p class="flota-vacia">No hay equipamiento registrado en tu instalación.</p>';
+        } else {
+            html += '<table class="tabla"><thead><tr><th>Ítem</th><th>Categoría</th>' +
+                    '<th>Cantidad</th><th>Estado</th></tr></thead><tbody>' +
+                    items.map(function (m) {
+                        return '<tr><td>' + m.nombre + '</td><td>' + m.categoria + '</td><td>' +
+                               m.cantidad + '</td><td>' + etiquetaEstado(m.estado) + '</td></tr>';
+                    }).join('') + '</tbody></table>';
+        }
+
+        html += '<div class="op-nota">¿Detectaste un problema en un contenedor? ' +
+                'Reportalo desde la sección <b>Incidencias</b>.</div>';
+        html += '</div>';
+        cont.innerHTML = html;
+    }
+
+    function etiquetaEstadoInstalacion(estado) {
+        const clases = { operativa: 'ok', mantenimiento: 'warn', fuera_servicio: 'bad' };
+        const textos = { operativa: 'Operativa', mantenimiento: 'En mantenimiento',
+                         fuera_servicio: 'Fuera de servicio' };
+        return '<span class="pill pill-' + (clases[estado] || 'ok') + '">' +
+               (textos[estado] || estado) + '</span>';
+    }
+
+    // =============================================================
+    //  INCIDENCIAS (mapa para todos + gestión para el admin)
+    // =============================================================
+    let mapaInc = null, capaPinesInc = null;
+    let contenedorElegido = null;      // el contenedor clickeado en el mapa
+    let cacheContenedores = [];
+    let cacheIncidencias = [];
+
+    async function cargarIncidencias() {
+        const esAdmin = rolEfectivo(usuarioActual) === 'administrador';
+
+        if (typeof L === 'undefined') {
+            const div = document.getElementById('mapa-incidencias');
+            if (div) div.outerHTML = '<div class="mapa-error">No se pudo cargar el mapa. ' +
+                'Verificá tu conexión a internet.</div>';
+        } else {
+            setTimeout(function () {
+                if (document.getElementById('mapa-incidencias') && !mapaInc) {
+                    mapaInc = L.map('mapa-incidencias').setView(MVD, 12);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '© OpenStreetMap', maxZoom: 19,
+                    }).addTo(mapaInc);
+                    capaPinesInc = L.layerGroup().addTo(mapaInc);
+                }
+                refrescarMapaIncidencias();
+                setTimeout(function () { if (mapaInc) mapaInc.invalidateSize(); }, 250);
+            }, 100);
+        }
+
+        // El admin necesita las cuadrillas para poder asignar responsables.
+        if (esAdmin && cacheCuadrillas.length === 0) {
+            try { cacheCuadrillas = await (await fetchGet(API_USUARIOS + '/cuadrillas')).json(); } catch (e) {}
+        }
+        refrescarListaIncidencias();
+        if (esAdmin) refrescarHistorial();
+    }
+
+    // Dibuja los contenedores en el mapa, marcando los que tienen incidencias.
+    async function refrescarMapaIncidencias() {
+        try {
+            cacheContenedores = await (await fetchGet(API_GESTION + '/contenedores')).json();
+            cacheIncidencias  = await (await fetchGet(API_GESTION + '/incidencias')).json();
+        } catch (err) { return; }
+
+        if (!capaPinesInc) return;
+        capaPinesInc.clearLayers();
+
+        cacheContenedores.forEach(function (c) {
+            if (c.lat === null || c.lng === null) return;
+            // ¿Este contenedor tiene incidencias activas?
+            const suyas = cacheIncidencias.filter(function (i) { return i.contenedorId === c.id; });
+            const conProblema = suyas.length > 0;
+
+            const marcador = L.marker([c.lat, c.lng], {
+                icon: iconoPinIncidencia(colorEstado(c.estado), conProblema)
+            });
+
+            let popup = '<b>' + c.codigo + '</b><br>' + c.direccion +
+                        '<br>Tipo: ' + c.tipoResiduo +
+                        '<br>Estado: ' + (c.estado === 'roto' ? 'Roto' : 'Operativo') +
+                        '<br>Llenado: ' + textoLlenado(c.nivelLlenado);
+            if (conProblema) {
+                popup += '<br><b style="color:#c62828">' + suyas.length +
+                         ' problema(s) reportado(s)</b>';
+            }
+            popup += '<br><i>Click en el pin para seleccionarlo</i>';
+
+            marcador.bindPopup(popup);
+            marcador.on('click', function () { elegirContenedor(c.id); });
+            marcador.addTo(capaPinesInc);
+        });
+    }
+
+    // Pin con anillo rojo si el contenedor tiene incidencias abiertas.
+    function iconoPinIncidencia(color, conProblema) {
+        const borde = conProblema ? '3px solid #c62828' : '2px solid #fff';
+        const tam = conProblema ? 22 : 18;
+        return L.divIcon({
+            className: 'pin-cont',
+            html: '<span style="background:' + color + '; border:' + borde +
+                  '; width:' + tam + 'px; height:' + tam + 'px"></span>',
+            iconSize: [tam, tam],
+            iconAnchor: [tam / 2, tam / 2],
+        });
+    }
+
+    // Al clickear un contenedor en el mapa queda seleccionado para reportar.
+    function elegirContenedor(id) {
+        contenedorElegido = id;
+        const c = cacheContenedores.find(function (x) { return x.id === id; });
+        const span = document.getElementById('cont-elegido');
+        const btn  = document.getElementById('btn-reportar');
+        if (span && c) {
+            span.textContent = 'Seleccionado: ' + c.codigo + ' — ' + c.direccion;
+            span.className = 'cont-ok';
+        }
+        if (btn) btn.disabled = false;
+    }
+
+    // Modal para describir el problema.
+    function abrirReporte() {
+        if (contenedorElegido === null) { alert('Elegí un contenedor en el mapa.'); return; }
+        const c = cacheContenedores.find(function (x) { return x.id === contenedorElegido; });
+        const cuerpo =
+            '<div class="form-modal">'
+            + '<p class="txt-muted">Contenedor: <b>' + (c ? c.codigo + ' — ' + c.direccion : '') + '</b></p>'
+            + '<label>Tipo de problema</label><select id="r-tipo">'
+            + '<option value="desborde">Desborde</option>'
+            + '<option value="rotura">Rotura</option>'
+            + '<option value="falta_recoleccion">Falta de recolección</option>'
+            + '<option value="otro">Otro</option></select>'
+            + '<label>Gravedad</label><select id="r-gravedad">'
+            + '<option value="baja">Baja</option>'
+            + '<option value="media" selected>Media</option>'
+            + '<option value="alta">Alta</option></select>'
+            + '<label>Descripción del problema</label>'
+            + '<textarea id="r-descripcion" rows="3" placeholder="Contanos brevemente qué pasa..."></textarea>'
+            + '<button class="btn" id="modal-guardar">Enviar reporte</button></div>';
+
+        abrirModal('Reportar un problema', cuerpo, async function () {
+            const datos = {
+                contenedorId:       contenedorElegido,
+                tipo:               document.getElementById('r-tipo').value,
+                gravedad:           document.getElementById('r-gravedad').value,
+                descripcion:        document.getElementById('r-descripcion').value.trim(),
+                reportadoPor:       usuarioActual ? usuarioActual.id : null,
+                reportadoPorNombre: usuarioActual ? usuarioActual.nombre : 'Anónimo',
+            };
+            try {
+                const resp = await fetch(API_GESTION + '/incidencias', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(datos),
+                });
+                const r = await resp.json();
+                if (resp.ok) { cerrarModal(); recargarSeccionActual(); }
+                else modalError(r.error || 'No se pudo reportar.');
+            } catch (e) { modalError('Error de conexión.'); }
+        });
+    }
+
+    // Lista de incidencias activas. El admin ve controles de gestión.
+    async function refrescarListaIncidencias() {
+        const cont = document.getElementById('lista-incidencias');
+        if (!cont) return;
+        const esAdmin = rolEfectivo(usuarioActual) === 'administrador';
+
+        try {
+            cacheIncidencias = await (await fetchGet(API_GESTION + '/incidencias')).json();
+            if (cacheContenedores.length === 0) {
+                cacheContenedores = await (await fetchGet(API_GESTION + '/contenedores')).json();
+            }
+        } catch (err) {
+            cont.innerHTML = '<p class="flota-vacia">Error al conectar con API Gestión.</p>';
+            return;
+        }
+
+        if (cacheIncidencias.length === 0) {
+            cont.innerHTML = '<p class="flota-vacia">No hay incidencias activas. Todo en orden.</p>';
+            return;
+        }
+
+        const filas = cacheIncidencias.map(function (i) {
+            const c = cacheContenedores.find(function (x) { return x.id === i.contenedorId; });
+            const cont_txt = c ? (c.codigo + ' — ' + c.direccion) : ('#' + i.contenedorId);
+
+            let acciones = '';
+            if (esAdmin) {
+                // Selector de estado
+                const est = ['abierta', 'en_curso'].map(function (e) {
+                    const t = (e === 'abierta') ? 'Abierta' : 'En curso';
+                    return '<option value="' + e + '"' + (i.estado === e ? ' selected' : '') + '>' + t + '</option>';
+                }).join('');
+                // Selector de cuadrilla responsable
+                const cuad = '<option value="">(sin asignar)</option>' +
+                    cacheCuadrillas.map(function (cu) {
+                        return '<option value="' + cu.id + '"' +
+                            (cu.id === i.cuadrillaId ? ' selected' : '') + '>' + cu.nombre + '</option>';
+                    }).join('');
+                acciones =
+                    '<select onchange="cambiarEstadoIncidencia(' + i.id + ', this.value)">' + est + '</select> ' +
+                    '<select onchange="asignarCuadrillaIncidencia(' + i.id + ', this.value)">' + cuad + '</select> ' +
+                    '<button class="btn-mini" onclick="resolverIncidencia(' + i.id + ')">Resolver</button> ' +
+                    '<button class="btn-eliminar" onclick="eliminarIncidencia(' + i.id + ')">Eliminar</button>';
+            } else {
+                acciones = '<span class="txt-muted">' +
+                    (i.estado === 'en_curso' ? 'La cuadrilla está trabajando en esto' : 'Pendiente de atención') +
+                    '</span>';
+            }
+
+            return '<tr><td>' + pillGravedad(i.gravedad) + '</td><td>' + i.tipoLegible + '</td><td>' +
+                cont_txt + '</td><td>' + i.descripcion + '</td><td>' + i.reportadoPorNombre + '</td><td>' +
+                (i.fechaReporte || '').substring(0, 16) + '</td><td>' + acciones + '</td></tr>';
+        }).join('');
+
+        cont.innerHTML = '<table class="tabla"><thead><tr><th>Gravedad</th><th>Tipo</th>' +
+            '<th>Contenedor</th><th>Descripción</th><th>Reportó</th><th>Fecha</th>' +
+            '<th>' + (esAdmin ? 'Gestión' : 'Estado') + '</th></tr></thead><tbody>' +
+            filas + '</tbody></table>';
+    }
+
+    // Historial de incidencias resueltas (solo admin).
+    async function refrescarHistorial() {
+        const cont = document.getElementById('historial-incidencias');
+        if (!cont) return;
+        try {
+            const lista = await (await fetchGet(API_GESTION + '/incidencias/historial')).json();
+            if (lista.length === 0) {
+                cont.innerHTML = '<p class="flota-vacia">Todavía no hay incidencias resueltas.</p>';
+                return;
+            }
+            const filas = lista.map(function (i) {
+                const c = cacheContenedores.find(function (x) { return x.id === i.contenedorId; });
+                const cuad = i.cuadrillaId ? nombreCuadrilla(i.cuadrillaId) : '—';
+                return '<tr><td>' + pillGravedad(i.gravedad) + '</td><td>' + i.tipoLegible + '</td><td>' +
+                    (c ? c.codigo : '#' + i.contenedorId) + '</td><td>' + i.descripcion + '</td><td>' +
+                    cuad + '</td><td>' + (i.fechaReporte || '').substring(0, 16) + '</td><td>' +
+                    (i.fechaResolucion || '').substring(0, 16) + '</td></tr>';
+            }).join('');
+            cont.innerHTML = '<table class="tabla"><thead><tr><th>Gravedad</th><th>Tipo</th>' +
+                '<th>Contenedor</th><th>Descripción</th><th>Cuadrilla</th><th>Reportada</th>' +
+                '<th>Resuelta</th></tr></thead><tbody>' + filas + '</tbody></table>';
+        } catch (err) {
+            cont.innerHTML = '<p class="flota-vacia">Error al cargar el historial.</p>';
+        }
+    }
+
+    function pillGravedad(g) {
+        const clase = (g === 'alta') ? 'bad' : (g === 'media' ? 'warn' : 'ok');
+        const texto = (g === 'alta') ? 'Alta' : (g === 'media' ? 'Media' : 'Baja');
+        return '<span class="pill pill-' + clase + '">' + texto + '</span>';
+    }
+
+    async function cambiarEstadoIncidencia(id, estado) {
+        try {
+            const resp = await fetch(API_GESTION + '/incidencias/estado', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id, estado: estado }),
+            });
+            if (resp.ok) recargarSeccionActual();
+            else { const r = await resp.json(); alert(r.error || 'No se pudo cambiar el estado.'); }
+        } catch (e) { alert('Error de conexión.'); }
+    }
+
+    async function asignarCuadrillaIncidencia(id, cuadrillaId) {
+        try {
+            const resp = await fetch(API_GESTION + '/incidencias/asignar-cuadrilla', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id, cuadrillaId: cuadrillaId || null }),
+            });
+            if (!resp.ok) { const r = await resp.json(); alert(r.error || 'No se pudo asignar.'); }
+        } catch (e) { alert('Error de conexión.'); }
+    }
+
+    // Resolver: marca resuelta y la manda al historial (sale del mapa activo).
+    async function resolverIncidencia(id) {
+        if (!confirm('¿Marcar esta incidencia como resuelta? Pasará al historial.')) return;
+        try {
+            const resp = await fetch(API_GESTION + '/incidencias/estado', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id, estado: 'resuelta' }),
+            });
+            if (resp.ok) recargarSeccionActual();
+            else { const r = await resp.json(); alert(r.error || 'No se pudo resolver.'); }
+        } catch (e) { alert('Error de conexión.'); }
+    }
+
+    async function eliminarIncidencia(id) {
+        if (!confirm('¿Eliminar esta incidencia definitivamente?')) return;
+        try {
+            const resp = await fetch(API_GESTION + '/incidencias/eliminar', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id }),
+            });
+            if (resp.ok) recargarSeccionActual();
+            else { const r = await resp.json(); alert(r.error || 'No se pudo eliminar.'); }
+        } catch (e) { alert('Error de conexión.'); }
+    }
+
+    // =============================================================
+    //  INSTALACIONES (centros de acopio, plantas y vertederos)
+    //  y su INVENTARIO de maquinaria
+    // =============================================================
+    let cacheInstalaciones = [];
+    let mapaInstCrear = null, mapaInstListado = null;
+    let marcadorInstNuevo = null, capaPinesInst = null;
+    let coordInstNueva = { lat: null, lng: null };
+
+    // Color del pin según el tipo de instalación.
+    function colorTipoInstalacion(tipo) {
+        if (tipo === 'clasificacion') return '#8e24aa';  // violeta
+        if (tipo === 'vertedero')     return '#6d4c41';  // marrón
+        return '#0d8ecf';                                // celeste: acopio
+    }
+
+    async function cargarInstalaciones() {
+        const tbody = document.getElementById('tabla-instalaciones');
+        if (!tbody) return;
+
+        // --- Mapas (si Leaflet cargó) ---
+        if (typeof L !== 'undefined') {
+            setTimeout(function () {
+                // Mapa para elegir la ubicación de la instalación nueva.
+                if (document.getElementById('mapa-inst-crear') && !mapaInstCrear) {
+                    mapaInstCrear = L.map('mapa-inst-crear').setView(MVD, 12);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '© OpenStreetMap', maxZoom: 19,
+                    }).addTo(mapaInstCrear);
+                    mapaInstCrear.on('click', function (e) {
+                        coordInstNueva.lat = e.latlng.lat;
+                        coordInstNueva.lng = e.latlng.lng;
+                        if (marcadorInstNuevo) marcadorInstNuevo.setLatLng(e.latlng);
+                        else marcadorInstNuevo = L.marker(e.latlng).addTo(mapaInstCrear);
+                        const c = document.getElementById('i-coord');
+                        if (c) c.textContent = 'Ubicación: ' +
+                            e.latlng.lat.toFixed(5) + ', ' + e.latlng.lng.toFixed(5);
+                    });
+                }
+                // Mapa con todas las instalaciones.
+                if (document.getElementById('mapa-inst-listado') && !mapaInstListado) {
+                    mapaInstListado = L.map('mapa-inst-listado').setView(MVD, 11);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '© OpenStreetMap', maxZoom: 19,
+                    }).addTo(mapaInstListado);
+                    capaPinesInst = L.layerGroup().addTo(mapaInstListado);
+                }
+                dibujarPinesInstalaciones();
+                setTimeout(function () {
+                    if (mapaInstCrear) mapaInstCrear.invalidateSize();
+                    if (mapaInstListado) mapaInstListado.invalidateSize();
+                }, 250);
+            }, 100);
+        }
+
+        try {
+            cacheInstalaciones = await (await fetchGet(API_GESTION + '/instalaciones')).json();
+            tbody.innerHTML = cacheInstalaciones.map(function (i) {
+                return '<tr><td>' + i.id + '</td><td>' + i.nombre + '</td><td>' +
+                    i.tipoLegible + '</td><td>' + i.direccion + '</td><td>' +
+                    i.capacidadMaxima + ' t</td><td>' + i.tipoResiduo + '</td><td>' +
+                    etiquetaEstado(i.estado) + '</td><td>' +
+                    '<button class="btn-editar" onclick="editarInstalacion(' + i.id + ')">Editar</button> ' +
+                    '<button class="btn-eliminar" onclick="eliminarInstalacion(' + i.id + ')">Eliminar</button>' +
+                    '</td></tr>';
+            }).join('');
+            if (cacheInstalaciones.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="txt-muted">No hay instalaciones registradas.</td></tr>';
+            }
+            dibujarPinesInstalaciones();
+        } catch (err) {
+            tbody.innerHTML = '<tr><td colspan="8">Error al conectar con API Gestión.</td></tr>';
+        }
+
+        // Selector de instalación del formulario de inventario.
+        const sel = document.getElementById('m-instalacion');
+        if (sel) {
+            sel.innerHTML = cacheInstalaciones.length
+                ? cacheInstalaciones.map(function (i) {
+                    return '<option value="' + i.id + '">' + i.nombre + ' (' + i.tipoLegible + ')</option>';
+                  }).join('')
+                : '<option value="">(creá una instalación primero)</option>';
+        }
+
+        const formI = document.getElementById('form-instalacion');
+        if (formI) formI.onsubmit = altaInstalacion;
+        const formM = document.getElementById('form-maquinaria');
+        if (formM) formM.onsubmit = altaMaquinaria;
+
+        cargarInventario();
+    }
+
+    // Dibuja un pin por instalación, de color según su tipo.
+    function dibujarPinesInstalaciones() {
+        if (!capaPinesInst) return;
+        capaPinesInst.clearLayers();
+        cacheInstalaciones.forEach(function (i) {
+            if (i.lat === null || i.lng === null) return;
+            L.marker([i.lat, i.lng], { icon: iconoPin(colorTipoInstalacion(i.tipo)) })
+                .bindPopup('<b>' + i.nombre + '</b><br>' + i.tipoLegible + '<br>' +
+                           i.direccion + '<br>Capacidad: ' + i.capacidadMaxima + ' t' +
+                           '<br>Estado: ' + i.estado)
+                .addTo(capaPinesInst);
+        });
+    }
+
+    // Traduce el estado a una etiqueta de color.
+    function etiquetaEstado(estado) {
+        const clases = { operativa: 'ok', operativo: 'ok', mantenimiento: 'warn',
+                         fuera_servicio: 'bad', rota: 'bad' };
+        const textos = { operativa: 'Operativa', mantenimiento: 'Mantenimiento',
+                         fuera_servicio: 'Fuera de servicio', rota: 'Rota' };
+        return '<span class="pill pill-' + (clases[estado] || 'ok') + '">' +
+               (textos[estado] || estado) + '</span>';
+    }
+
+    async function altaInstalacion(e) {
+        e.preventDefault();
+        const msg = document.getElementById('i-msg');
+        msg.className = 'msg';
+        if (coordInstNueva.lat === null || coordInstNueva.lng === null) {
+            msg.textContent = 'Marcá la ubicación en el mapa antes de agregar.';
+            msg.classList.add('err');
+            return;
+        }
+        const datos = {
+            nombre:          document.getElementById('i-nombre').value.trim(),
+            direccion:       document.getElementById('i-direccion').value.trim(),
+            tipo:            document.getElementById('i-tipo').value,
+            capacidadMaxima: document.getElementById('i-capacidad').value,
+            tipoResiduo:     document.getElementById('i-residuo').value,
+            estado:          document.getElementById('i-estado').value,
+            lat:             coordInstNueva.lat,
+            lng:             coordInstNueva.lng,
+        };
+        try {
+            const resp = await fetch(API_GESTION + '/instalaciones', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos),
+            });
+            const r = await resp.json();
+            if (resp.ok) {
+                msg.textContent = 'Instalación creada.'; msg.classList.add('ok');
+                e.target.reset();
+                if (marcadorInstNuevo && mapaInstCrear) { mapaInstCrear.removeLayer(marcadorInstNuevo); }
+                marcadorInstNuevo = null;
+                coordInstNueva = { lat: null, lng: null };
+                recargarSeccionActual();
+            } else {
+                msg.textContent = r.error; msg.classList.add('err');
+            }
+        } catch (err) {
+            msg.textContent = 'Error de conexión.'; msg.classList.add('err');
+        }
+    }
+
+    async function eliminarInstalacion(id) {
+        if (!confirm('¿Eliminar esta instalación? Su inventario quedará sin asignar.')) return;
+        try {
+            const resp = await fetch(API_GESTION + '/instalaciones/eliminar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id }),
+            });
+            if (resp.ok) recargarSeccionActual();
+            else { const r = await resp.json(); alert(r.error || 'No se pudo eliminar.'); }
+        } catch (err) { alert('Error de conexión.'); }
+    }
+
+    // Dibuja una tabla de inventario por cada instalación.
+    async function cargarInventario() {
+        const cont = document.getElementById('panel-inventario');
+        if (!cont) return;
+        try {
+            const items = await (await fetchGet(API_GESTION + '/maquinaria')).json();
+
+            let html = cacheInstalaciones.map(function (inst) {
+                const suyos = items.filter(function (m) { return m.instalacionId === inst.id; });
+                let filas;
+                if (suyos.length === 0) {
+                    filas = '<tr><td colspan="5" class="flota-vacia">Sin ítems registrados</td></tr>';
+                } else {
+                    filas = suyos.map(function (m) {
+                        return '<tr><td>' + m.nombre + '</td><td>' + m.categoria + '</td><td>' +
+                            m.cantidad + '</td><td>' + etiquetaEstado(m.estado) + '</td><td>' +
+                            '<button class="btn-editar" onclick="editarMaquinaria(' + m.id + ')">Editar</button> ' +
+                            '<button class="btn-eliminar" onclick="eliminarMaquinaria(' + m.id + ')">Eliminar</button>' +
+                            '</td></tr>';
+                    }).join('');
+                }
+                return '<div class="flota-bloque">' +
+                    '<div class="flota-head"><h3>' + inst.nombre + '</h3>' +
+                    '<span class="flota-zona">' + inst.tipoLegible + ' — capacidad ' +
+                    inst.capacidadMaxima + ' t</span></div>' +
+                    '<table class="tabla"><thead><tr><th>Ítem</th><th>Categoría</th>' +
+                    '<th>Cantidad</th><th>Estado</th><th>Acción</th></tr></thead><tbody>' +
+                    filas + '</tbody></table></div>';
+            }).join('');
+
+            // Ítems que quedaron sin instalación (por ejemplo, tras eliminar una).
+            const huerfanos = items.filter(function (m) { return m.instalacionId === null; });
+            if (huerfanos.length > 0) {
+                html += '<div class="flota-bloque"><div class="flota-head">' +
+                    '<h3>Sin instalación asignada</h3></div>' +
+                    '<table class="tabla"><thead><tr><th>Ítem</th><th>Categoría</th>' +
+                    '<th>Cantidad</th><th>Estado</th><th>Acción</th></tr></thead><tbody>' +
+                    huerfanos.map(function (m) {
+                        return '<tr><td>' + m.nombre + '</td><td>' + m.categoria + '</td><td>' +
+                            m.cantidad + '</td><td>' + etiquetaEstado(m.estado) + '</td><td>' +
+                            '<button class="btn-editar" onclick="editarMaquinaria(' + m.id + ')">Editar</button> ' +
+                            '<button class="btn-eliminar" onclick="eliminarMaquinaria(' + m.id + ')">Eliminar</button>' +
+                            '</td></tr>';
+                    }).join('') + '</tbody></table></div>';
+            }
+
+            cont.innerHTML = html || '<p class="flota-vacia">Creá una instalación para cargar su inventario.</p>';
+        } catch (err) {
+            cont.innerHTML = '<p class="flota-vacia">Error al conectar con API Gestión.</p>';
+        }
+    }
+
+    async function altaMaquinaria(e) {
+        e.preventDefault();
+        const msg = document.getElementById('m-msg');
+        msg.className = 'msg';
+        const datos = {
+            nombre:        document.getElementById('m-nombre').value.trim(),
+            categoria:     document.getElementById('m-categoria').value,
+            estado:        document.getElementById('m-estado').value,
+            cantidad:      document.getElementById('m-cantidad').value,
+            instalacionId: document.getElementById('m-instalacion').value,
+        };
+        try {
+            const resp = await fetch(API_GESTION + '/maquinaria', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos),
+            });
+            const res = await leerRespuesta(resp);
+            if (res.ok) {
+                msg.textContent = 'Ítem agregado al inventario.'; msg.classList.add('ok');
+                e.target.reset(); recargarSeccionActual();
+            } else {
+                msg.textContent = textoError(res.datos, 'No se pudo agregar.');
+                msg.classList.add('err');
+            }
+        } catch (err) {
+            msg.textContent = 'Error de conexión.'; msg.classList.add('err');
+        }
+    }
+
+    async function eliminarMaquinaria(id) {
+        if (!confirm('¿Eliminar este ítem del inventario?')) return;
+        try {
+            const resp = await fetch(API_GESTION + '/maquinaria/eliminar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id }),
+            });
+            if (resp.ok) recargarSeccionActual();
+            else { const r = await resp.json(); alert(r.error || 'No se pudo eliminar.'); }
+        } catch (err) { alert('Error de conexión.'); }
+    }
+
+    // =============================================================
+    //  MODAL DE EDICIÓN (reutilizable)
+    // =============================================================
+    function abrirModal(titulo, htmlCuerpo, onGuardar) {
+        document.getElementById('modal-titulo').textContent = titulo;
+        document.getElementById('modal-cuerpo').innerHTML = htmlCuerpo;
+        document.getElementById('modal-msg').textContent = '';
+        document.getElementById('modal-msg').className = 'msg';
+        document.getElementById('modal-editar').classList.remove('oculto');
+        // El botón "Guardar" del cuerpo llama a la función que pasamos.
+        const btn = document.getElementById('modal-guardar');
+        if (btn) btn.onclick = onGuardar;
+    }
+
+    function cerrarModal() {
+        document.getElementById('modal-editar').classList.add('oculto');
+    }
+
+    function modalError(texto) {
+        const m = document.getElementById('modal-msg');
+        m.textContent = texto; m.className = 'msg err';
+    }
+
+    // -------- EDITAR USUARIO --------
+    function editarUsuario(id) {
+        const u = cacheUsuarios.find(function (x) { return x.id === id; });
+        if (!u) return;
+        const esOperario = u.rol === 'operario';
+        const cuerpo =
+            '<div class="form-modal">'
+            + '<label>Nombre</label><input type="text" id="e-nombre" value="' + (u.nombre || '') + '">'
+            + '<label>Email</label><input type="email" id="e-email" value="' + (u.email || '') + '">'
+            + '<label>Contraseña (dejar vacío para no cambiarla)</label><input type="password" id="e-password" placeholder="••••••">'
+            + '<label>Rol</label><select id="e-rol" onchange="toggleEspecialidadEdit()">'
+            + '<option value="vecino"' + (u.rol === 'vecino' ? ' selected' : '') + '>Vecino</option>'
+            + '<option value="operario"' + (u.rol === 'operario' ? ' selected' : '') + '>Operario</option>'
+            + '<option value="administrador"' + (u.rol === 'administrador' ? ' selected' : '') + '>Administrador</option>'
+            + '</select>'
+            + '<div id="e-wrap-esp" style="' + (esOperario ? '' : 'display:none;') + '">'
+            + '<label>Especialidad</label><select id="e-especialidad">'
+            + '<option value="recoleccion"' + (u.especialidad === 'recoleccion' ? ' selected' : '') + '>Recolección</option>'
+            + '<option value="clasificacion"' + (u.especialidad === 'clasificacion' ? ' selected' : '') + '>Clasificación</option>'
+            + '<option value="vertedero"' + (u.especialidad === 'vertedero' ? ' selected' : '') + '>Vertedero</option>'
+            + '</select></div>'
+            + '<button class="btn" id="modal-guardar">Guardar cambios</button></div>';
+
+        abrirModal('Editar usuario', cuerpo, async function () {
+            const datos = {
+                id: id,
+                nombre: document.getElementById('e-nombre').value.trim(),
+                email: document.getElementById('e-email').value.trim(),
+                password: document.getElementById('e-password').value,
+                rol: document.getElementById('e-rol').value,
+            };
+            if (datos.rol === 'operario') datos.especialidad = document.getElementById('e-especialidad').value;
+            try {
+                const resp = await fetch(API_USUARIOS + '/usuarios/modificar', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(datos),
+                });
+                const r = await resp.json();
+                if (resp.ok) { cerrarModal(); recargarSeccionActual(); }
+                else modalError(r.error || 'No se pudo modificar.');
+            } catch (e) { modalError('Error de conexión.'); }
+        });
+    }
+    function toggleEspecialidadEdit() {
+        const rol = document.getElementById('e-rol').value;
+        document.getElementById('e-wrap-esp').style.display = (rol === 'operario') ? 'block' : 'none';
+    }
+
+    // -------- EDITAR CONTENEDOR --------
+    let modalMapa = null, modalMarcador = null, modalCoord = { lat: null, lng: null };
+    let modalMapaInst = null, modalMarcadorInst = null, modalCoordInst = { lat: null, lng: null };
+    function editarContenedor(id) {
+        // Buscamos el contenedor en la última lista cargada.
+        fetchGet(API_GESTION + '/contenedores').then(function (resp) { return resp.json(); }).then(function (lista) {
+            const c = lista.find(function (x) { return x.id === id; });
+            if (!c) return;
+            modalCoord = { lat: c.lat, lng: c.lng };
+            const cuerpo =
+                '<div class="form-modal">'
+                + '<label>Código</label><input type="text" id="e-codigo" value="' + (c.codigo || '') + '">'
+                + '<label>Dirección</label><input type="text" id="e-direccion" value="' + (c.direccion || '') + '">'
+                + '<label>Tipo de residuo</label><select id="e-tipo">'
+                + '<option value="mezclado"' + (c.tipoResiduo === 'mezclado' ? ' selected' : '') + '>Mezclado</option>'
+                + '<option value="reciclable"' + (c.tipoResiduo === 'reciclable' ? ' selected' : '') + '>Reciclable</option></select>'
+                + '<label>Estado (integridad)</label><select id="e-estado">'
+                + '<option value="operativo"' + (c.estado === 'operativo' ? ' selected' : '') + '>Operativo</option>'
+                + '<option value="roto"' + (c.estado === 'roto' ? ' selected' : '') + '>Roto</option></select>'
+                + '<label>Nivel de llenado</label><select id="e-llenado">'
+                + '<option value="vacio"' + (c.nivelLlenado === 'vacio' ? ' selected' : '') + '>Vacío</option>'
+                + '<option value="lleno"' + (c.nivelLlenado === 'lleno' ? ' selected' : '') + '>Lleno</option>'
+                + '<option value="desbordado"' + (c.nivelLlenado === 'desbordado' ? ' selected' : '') + '>Desbordado</option></select>'
+                + '<label>Ubicación (click en el mapa para cambiarla)</label>'
+                + '<div id="modal-mapa" class="mapa"></div>'
+                + '<p class="mapa-coord" id="e-coord">Ubicación actual: ' + c.lat + ', ' + c.lng + '</p>'
+                + '<button class="btn" id="modal-guardar">Guardar cambios</button></div>';
+
+            abrirModal('Editar contenedor', cuerpo, async function () {
+                const datos = {
+                    id: id,
+                    codigo: document.getElementById('e-codigo').value.trim(),
+                    direccion: document.getElementById('e-direccion').value.trim(),
+                    tipoResiduo: document.getElementById('e-tipo').value,
+                    estado: document.getElementById('e-estado').value,
+                    nivelLlenado: document.getElementById('e-llenado').value,
+                    lat: modalCoord.lat, lng: modalCoord.lng,
+                };
+                try {
+                    const resp = await fetch(API_GESTION + '/contenedores/modificar', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(datos),
+                    });
+                    const r = await resp.json();
+                    if (resp.ok) { cerrarModal(); refrescarContenedores(); }
+                    else modalError(r.error || 'No se pudo modificar.');
+                } catch (e) { modalError('Error de conexión.'); }
+            });
+
+            // Mini-mapa dentro del modal para reubicar.
+            if (typeof L !== 'undefined') {
+                setTimeout(function () {
+                    modalMapa = L.map('modal-mapa').setView([c.lat || MVD[0], c.lng || MVD[1]], 13);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(modalMapa);
+                    if (c.lat && c.lng) modalMarcador = L.marker([c.lat, c.lng]).addTo(modalMapa);
+                    modalMapa.on('click', function (e) {
+                        modalCoord.lat = e.latlng.lat; modalCoord.lng = e.latlng.lng;
+                        if (modalMarcador) modalMarcador.setLatLng(e.latlng);
+                        else modalMarcador = L.marker(e.latlng).addTo(modalMapa);
+                        document.getElementById('e-coord').textContent =
+                            'Nueva ubicación: ' + e.latlng.lat.toFixed(5) + ', ' + e.latlng.lng.toFixed(5);
+                    });
+                    setTimeout(function () { modalMapa.invalidateSize(); }, 200);
+                }, 100);
+            }
+        });
+    }
+
+    // -------- EDITAR CAMIÓN --------
+    function editarCamion(id) {
+        fetchGet(API_RECOLECCION + '/camiones').then(function (resp) { return resp.json(); }).then(function (lista) {
+            const k = lista.find(function (x) { return x.id === id; });
+            if (!k) return;
+            const cuerpo =
+                '<div class="form-modal">'
+                + '<label>Patente</label><input type="text" id="e-patente" value="' + (k.patente || '') + '">'
+                + '<label>Modelo</label><input type="text" id="e-modelo" value="' + (k.modelo || '') + '">'
+                + '<label>Estado</label><select id="e-kestado">'
+                + '<option value="operativo"' + (k.estado === 'operativo' ? ' selected' : '') + '>Operativo</option>'
+                + '<option value="mantenimiento"' + (k.estado === 'mantenimiento' ? ' selected' : '') + '>Mantenimiento</option></select>'
+                + '<label>Disponibilidad</label><select id="e-kdisp">'
+                + '<option value="disponible"' + (k.disponibilidad === 'disponible' ? ' selected' : '') + '>Disponible</option>'
+                + '<option value="en_ruta"' + (k.disponibilidad === 'en_ruta' ? ' selected' : '') + '>En ruta</option></select>'
+                + '<button class="btn" id="modal-guardar">Guardar cambios</button></div>';
+
+            abrirModal('Editar camión', cuerpo, async function () {
+                const datos = {
+                    id: id,
+                    patente: document.getElementById('e-patente').value.trim(),
+                    modelo: document.getElementById('e-modelo').value.trim(),
+                    estado: document.getElementById('e-kestado').value,
+                    disponibilidad: document.getElementById('e-kdisp').value,
+                };
+                try {
+                    const resp = await fetch(API_RECOLECCION + '/camiones/modificar', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(datos),
+                    });
+                    const r = await resp.json();
+                    if (resp.ok) { cerrarModal(); recargarSeccionActual(); }
+                    else modalError(r.error || 'No se pudo modificar.');
+                } catch (e) { modalError('Error de conexión.'); }
+            });
+        });
+    }
+
+    // -------- EDITAR INSTALACIÓN --------
+    function editarInstalacion(id) {
+        const i = cacheInstalaciones.find(function (x) { return x.id === id; });
+        if (!i) return;
+        const sel = function (valor, opcion) { return valor === opcion ? ' selected' : ''; };
+        const cuerpo =
+            '<div class="form-modal">'
+            + '<label>Nombre</label><input type="text" id="e-inombre" value="' + i.nombre + '">'
+            + '<label>Dirección</label><input type="text" id="e-idireccion" value="' + i.direccion + '">'
+            + '<label>Tipo</label><select id="e-itipo">'
+            + '<option value="acopio"' + sel(i.tipo, 'acopio') + '>Centro de acopio</option>'
+            + '<option value="clasificacion"' + sel(i.tipo, 'clasificacion') + '>Planta de clasificación</option>'
+            + '<option value="vertedero"' + sel(i.tipo, 'vertedero') + '>Vertedero</option></select>'
+            + '<label>Capacidad máxima (toneladas)</label>'
+            + '<input type="number" id="e-icapacidad" min="1" value="' + i.capacidadMaxima + '">'
+            + '<label>Tipo de residuo</label><select id="e-iresiduo">'
+            + '<option value="mezclado"' + sel(i.tipoResiduo, 'mezclado') + '>Mezclado</option>'
+            + '<option value="reciclable"' + sel(i.tipoResiduo, 'reciclable') + '>Reciclable</option>'
+            + '<option value="ambos"' + sel(i.tipoResiduo, 'ambos') + '>Ambos</option></select>'
+            + '<label>Estado</label><select id="e-iestado">'
+            + '<option value="operativa"' + sel(i.estado, 'operativa') + '>Operativa</option>'
+            + '<option value="mantenimiento"' + sel(i.estado, 'mantenimiento') + '>Mantenimiento</option>'
+            + '<option value="fuera_servicio"' + sel(i.estado, 'fuera_servicio') + '>Fuera de servicio</option></select>'
+            + '<label>Ubicación (click en el mapa para cambiarla)</label>'
+            + '<div id="modal-mapa-inst" class="mapa"></div>'
+            + '<p class="mapa-coord" id="e-icoord">Ubicación actual: ' + i.lat + ', ' + i.lng + '</p>'
+            + '<button class="btn" id="modal-guardar">Guardar cambios</button></div>';
+
+        // Coordenadas que se van a guardar (arrancan con las actuales).
+        modalCoordInst = { lat: i.lat, lng: i.lng };
+
+        abrirModal('Editar instalación', cuerpo, async function () {
+            const datos = {
+                id: id,
+                nombre:          document.getElementById('e-inombre').value.trim(),
+                direccion:       document.getElementById('e-idireccion').value.trim(),
+                tipo:            document.getElementById('e-itipo').value,
+                capacidadMaxima: document.getElementById('e-icapacidad').value,
+                tipoResiduo:     document.getElementById('e-iresiduo').value,
+                estado:          document.getElementById('e-iestado').value,
+                lat:             modalCoordInst.lat,
+                lng:             modalCoordInst.lng,
+            };
+            try {
+                const resp = await fetch(API_GESTION + '/instalaciones/modificar', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(datos),
+                });
+                const r = await resp.json();
+                if (resp.ok) { cerrarModal(); recargarSeccionActual(); }
+                else modalError(r.error || 'No se pudo modificar.');
+            } catch (e) { modalError('Error de conexión.'); }
+        });
+
+        // Mini-mapa dentro del modal para reubicar la instalación.
+        if (typeof L !== 'undefined') {
+            setTimeout(function () {
+                const centro = (i.lat && i.lng) ? [i.lat, i.lng] : MVD;
+                modalMapaInst = L.map('modal-mapa-inst').setView(centro, 13);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap', maxZoom: 19,
+                }).addTo(modalMapaInst);
+                if (i.lat && i.lng) {
+                    modalMarcadorInst = L.marker([i.lat, i.lng]).addTo(modalMapaInst);
+                }
+                modalMapaInst.on('click', function (e) {
+                    modalCoordInst.lat = e.latlng.lat;
+                    modalCoordInst.lng = e.latlng.lng;
+                    if (modalMarcadorInst) modalMarcadorInst.setLatLng(e.latlng);
+                    else modalMarcadorInst = L.marker(e.latlng).addTo(modalMapaInst);
+                    document.getElementById('e-icoord').textContent =
+                        'Nueva ubicación: ' + e.latlng.lat.toFixed(5) + ', ' + e.latlng.lng.toFixed(5);
+                });
+                setTimeout(function () { modalMapaInst.invalidateSize(); }, 200);
+            }, 100);
+        }
+    }
+
+    // -------- EDITAR ÍTEM DE INVENTARIO --------
+    function editarMaquinaria(id) {
+        fetchGet(API_GESTION + '/maquinaria').then(function (resp) { return resp.json(); }).then(function (lista) {
+            const m = lista.find(function (x) { return x.id === id; });
+            if (!m) return;
+            const sel = function (valor, opcion) { return valor === opcion ? ' selected' : ''; };
+            const opcionesInst = cacheInstalaciones.map(function (i) {
+                return '<option value="' + i.id + '"' + (i.id === m.instalacionId ? ' selected' : '') + '>' +
+                    i.nombre + '</option>';
+            }).join('');
+            const cuerpo =
+                '<div class="form-modal">'
+                + '<label>Nombre</label><input type="text" id="e-mnombre" value="' + m.nombre + '">'
+                + '<label>Categoría</label><select id="e-mcategoria">'
+                + '<option value="maquinaria"' + sel(m.categoria, 'maquinaria') + '>Maquinaria</option>'
+                + '<option value="herramienta"' + sel(m.categoria, 'herramienta') + '>Herramienta</option>'
+                + '<option value="repuesto"' + sel(m.categoria, 'repuesto') + '>Repuesto</option></select>'
+                + '<label>Estado</label><select id="e-mestado">'
+                + '<option value="operativa"' + sel(m.estado, 'operativa') + '>Operativa</option>'
+                + '<option value="mantenimiento"' + sel(m.estado, 'mantenimiento') + '>Mantenimiento</option>'
+                + '<option value="rota"' + sel(m.estado, 'rota') + '>Rota</option></select>'
+                + '<label>Cantidad</label><input type="number" id="e-mcantidad" min="1" value="' + m.cantidad + '">'
+                + '<label>Instalación</label><select id="e-minstalacion">' + opcionesInst + '</select>'
+                + '<button class="btn" id="modal-guardar">Guardar cambios</button></div>';
+
+            abrirModal('Editar ítem de inventario', cuerpo, async function () {
+                const datos = {
+                    id: id,
+                    nombre:        document.getElementById('e-mnombre').value.trim(),
+                    categoria:     document.getElementById('e-mcategoria').value,
+                    estado:        document.getElementById('e-mestado').value,
+                    cantidad:      document.getElementById('e-mcantidad').value,
+                    instalacionId: document.getElementById('e-minstalacion').value,
+                };
+                try {
+                    const resp = await fetch(API_GESTION + '/maquinaria/modificar', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(datos),
+                    });
+                    const r = await resp.json();
+                    if (resp.ok) { cerrarModal(); recargarSeccionActual(); }
+                    else modalError(r.error || 'No se pudo modificar.');
+                } catch (e) { modalError('Error de conexión.'); }
+            });
+        });
+    }
+
+    // Al abrir la página, intentamos restaurar una sesión guardada
+    // (para que un refresco no devuelva al login).
+    restaurarSesion();
+</script>
+</body>
+</html>

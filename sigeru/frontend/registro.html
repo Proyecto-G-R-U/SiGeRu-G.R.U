@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SiGeRU — Registro de Vecinos</title>
+    <link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+    <!--
+      LANDING / REGISTRO DE VECINOS.
+      El JavaScript va embebido abajo (etiqueta <script>), sin archivos .js
+      externos. Usa fetch para hablar con la API de Usuarios a través de una
+      ruta relativa: sube un nivel (..) y entra a api-usuarios.
+      Corre bajo Apache/XAMPP con el .htaccess de cada API (sin puertos).
+    -->
+    <div class="login-screen">
+        <div class="login-card">
+            <h1>SiGeRU</h1>
+            <p class="login-sub">Sistema de Gestión de Residuos Urbanos</p>
+            <p class="login-desc">
+                Registrate como vecino para reportar contenedores, ver el mapa
+                y acceder a la guía de reciclaje de tu ciudad.
+            </p>
+
+            <form id="form-registro">
+                <label for="nombre">Nombre completo</label>
+                <input type="text" id="nombre" required>
+
+                <label for="email">Email</label>
+                <input type="email" id="email" required>
+
+                <label for="password">Contraseña</label>
+                <input type="password" id="password" required>
+
+                <button type="submit" class="btn">Crear cuenta</button>
+            </form>
+
+            <p class="msg" id="mensaje"></p>
+
+            <a class="link" href="index.html">¿Ya tenés cuenta? Iniciá sesión</a>
+        </div>
+    </div>
+
+    <!-- ====== JAVASCRIPT EMBEBIDO (sin archivos .js externos) ====== -->
+    <script>
+        // Ruta relativa a la API de Usuarios. Al estar el frontend en
+        // /sigeru/frontend/, subimos un nivel (..) y entramos a api-usuarios.
+        // Apache + .htaccess resuelven /api-usuarios/usuarios -> api.php.
+        const API_USUARIOS = '../api-usuarios';
+
+        const form = document.getElementById('form-registro');
+        const mensaje = document.getElementById('mensaje');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            mensaje.textContent = '';
+            mensaje.className = 'msg';
+
+            const datos = {
+                nombre:   document.getElementById('nombre').value.trim(),
+                email:    document.getElementById('email').value.trim(),
+                password: document.getElementById('password').value,
+                rol:      'vecino',
+            };
+
+            try {
+                const resp = await fetch(API_USUARIOS + '/usuarios', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(datos),
+                });
+                const resultado = await resp.json();
+
+                if (resp.ok) {
+                    mensaje.textContent = '¡Cuenta creada! Ya podés iniciar sesión.';
+                    mensaje.classList.add('ok');
+                    form.reset();
+                } else {
+                    mensaje.textContent = resultado.error || 'No se pudo registrar.';
+                    mensaje.classList.add('err');
+                }
+            } catch (err) {
+                mensaje.textContent = 'No se pudo conectar con la API de Usuarios.';
+                mensaje.classList.add('err');
+            }
+        });
+    </script>
+</body>
+</html>
