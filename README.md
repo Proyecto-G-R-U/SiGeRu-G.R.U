@@ -177,6 +177,7 @@ Para volver a los datos de prueba: reimportar `base.sql` en phpMyAdmin
 ### Credenciales de conexión
 XAMPP por defecto: host `localhost`, usuario `root`, sin contraseña.
 Se cambian en `app/models/RepositorioSql.php` de cada API.
+<<<<<<< HEAD
 
 ## INSTALACIONES E INVENTARIO (2da entrega)
 
@@ -302,3 +303,5 @@ cada instalación se muestra en su propio panel, no como guía educativa.
 ### IMPORTANTE: reimportar la base
 Cambió la tabla `contenedor` (nueva columna `nivel_llenado` y el ENUM de
 `estado`), así que hay que volver a importar `base-de-datos/base.sql`.
+=======
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c

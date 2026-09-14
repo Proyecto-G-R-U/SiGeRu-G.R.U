@@ -214,6 +214,7 @@ html, body { height:100%; font-family:'Segoe UI', sans-serif; background:var(--b
 .lv-card p { font-size:12.5px; color:var(--muted); line-height:1.6; }
 .lv-footer { background:var(--card); border:1px solid var(--border); border-radius:12px;
     padding:18px; text-align:center; font-size:14px; font-weight:600; color:var(--primary); }
+<<<<<<< HEAD
 
 /* ---- Etiquetas de estado (píldoras de color) ---- */
 .pill { display:inline-block; padding:3px 10px; border-radius:12px; font-size:11.5px;
@@ -277,3 +278,5 @@ html, body { height:100%; font-family:'Segoe UI', sans-serif; background:var(--b
 
 .guia-cierre { background:var(--bg); border:1px solid var(--border); border-left:4px solid var(--primary);
     border-radius:10px; padding:18px 22px; margin-top:22px; font-size:13.5px; line-height:1.7; }
+=======
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c

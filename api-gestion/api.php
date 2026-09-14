@@ -9,6 +9,7 @@ declare(strict_types=1);
 require __DIR__ . '/app/models/RepositorioSql.php';
 require __DIR__ . '/app/models/Contenedor.php';
 require __DIR__ . '/app/models/RepositorioContenedores.php';
+<<<<<<< HEAD
 require __DIR__ . '/app/models/Instalacion.php';
 require __DIR__ . '/app/models/CentroAcopio.php';
 require __DIR__ . '/app/models/PlantaClasificacion.php';
@@ -32,6 +33,13 @@ use App\Controllers\ContenedorController;
 use App\Controllers\InstalacionController;
 use App\Controllers\MaquinariaController;
 use App\Controllers\IncidenciaController;
+=======
+require __DIR__ . '/app/controllers/ControladorBase.php';
+require __DIR__ . '/app/controllers/ContenedorController.php';
+
+use App\Models\RepositorioContenedores;
+use App\Controllers\ContenedorController;
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
@@ -51,12 +59,16 @@ if ($base !== '/' && $base !== '' && str_starts_with($ruta, $base)) {
 }
 $ruta = '/' . trim($ruta, '/');
 
+<<<<<<< HEAD
 $repoContenedores = new RepositorioContenedores();
 $controller = new ContenedorController($repoContenedores);
 $repoInstalaciones = new RepositorioInstalaciones();
 $instalacionCtrl = new InstalacionController($repoInstalaciones);
 $maquinariaCtrl  = new MaquinariaController(new RepositorioMaquinaria(), $repoInstalaciones);
 $incidenciaCtrl  = new IncidenciaController(new RepositorioIncidencias(), $repoContenedores);
+=======
+$controller = new ContenedorController(new RepositorioContenedores());
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
 
 switch ($metodo . ' ' . $ruta) {
     case 'GET /contenedores':
@@ -75,6 +87,7 @@ switch ($metodo . ' ' . $ruta) {
         $controller->modificar();
         break;
 
+<<<<<<< HEAD
     // ---- Instalaciones (centros de acopio, plantas, vertederos) ----
     case 'GET /instalaciones':
         $instalacionCtrl->listar();
@@ -134,6 +147,8 @@ switch ($metodo . ' ' . $ruta) {
         $incidenciaCtrl->eliminar();
         break;
 
+=======
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
     default:
         http_response_code(404);
         header('Content-Type: application/json; charset=utf-8');

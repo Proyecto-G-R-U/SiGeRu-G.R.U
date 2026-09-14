@@ -74,8 +74,12 @@ class UsuarioController extends ControladorBase
             'operario'      => $this->crearOperario(
                 $id, $nombre, $email, $hash,
                 $datos['especialidad'] ?? 'recoleccion',
+<<<<<<< HEAD
                 $datos['cuadrilla'] ?? null,
                 isset($datos['instalacionId']) && $datos['instalacionId'] !== '' ? (int)$datos['instalacionId'] : null
+=======
+                $datos['cuadrilla'] ?? null
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
             ),
             default         => new Vecino($id, $nombre, $email, $hash),
         };
@@ -137,12 +141,21 @@ class UsuarioController extends ControladorBase
      * Crea la subclase de Operario correcta según la especialidad.
      * Centraliza la decisión en un solo lugar (fábrica simple).
      */
+<<<<<<< HEAD
     private function crearOperario(int $id, string $nombre, string $email, string $hash, string $especialidad, ?string $cuadrilla, ?int $instalacionId = null): Operario
     {
         return match ($especialidad) {
             'clasificacion' => new OperarioClasificacion($id, $nombre, $email, $hash, $cuadrilla, $instalacionId),
             'vertedero'     => new OperarioVertedero($id, $nombre, $email, $hash, $cuadrilla, $instalacionId),
             default         => new OperarioRecoleccion($id, $nombre, $email, $hash, $cuadrilla, $instalacionId),
+=======
+    private function crearOperario(int $id, string $nombre, string $email, string $hash, string $especialidad, ?string $cuadrilla): Operario
+    {
+        return match ($especialidad) {
+            'clasificacion' => new OperarioClasificacion($id, $nombre, $email, $hash, $cuadrilla),
+            'vertedero'     => new OperarioVertedero($id, $nombre, $email, $hash, $cuadrilla),
+            default         => new OperarioRecoleccion($id, $nombre, $email, $hash, $cuadrilla),
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
         };
     }
 
@@ -189,8 +202,12 @@ class UsuarioController extends ControladorBase
             'operario'      => $this->crearOperario(
                 $id, $nombre, $email, $hashParaObjeto,
                 $datos['especialidad'] ?? 'recoleccion',
+<<<<<<< HEAD
                 $datos['cuadrilla'] ?? null,
                 isset($datos['instalacionId']) && $datos['instalacionId'] !== '' ? (int)$datos['instalacionId'] : null
+=======
+                $datos['cuadrilla'] ?? null
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
             ),
             default         => new Vecino($id, $nombre, $email, $hashParaObjeto),
         };

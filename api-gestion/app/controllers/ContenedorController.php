@@ -33,7 +33,10 @@ class ContenedorController extends ControladorBase
         $direccion   = trim($datos['direccion'] ?? '');
         $tipoResiduo = $datos['tipoResiduo'] ?? 'mezclado';
         $estado      = $datos['estado'] ?? 'operativo';
+<<<<<<< HEAD
         $nivelLlenado = $datos['nivelLlenado'] ?? 'vacio';
+=======
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
         $lat = isset($datos['lat']) && $datos['lat'] !== '' && $datos['lat'] !== null ? (float)$datos['lat'] : null;
         $lng = isset($datos['lng']) && $datos['lng'] !== '' && $datos['lng'] !== null ? (float)$datos['lng'] : null;
 
@@ -51,8 +54,12 @@ class ContenedorController extends ControladorBase
             $tipoResiduo,
             $estado,
             $lat,
+<<<<<<< HEAD
             $lng,
             $nivelLlenado
+=======
+            $lng
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
         );
         $this->repo->agregar($contenedor);
 
@@ -84,7 +91,10 @@ class ContenedorController extends ControladorBase
         $direccion   = trim($datos['direccion'] ?? '');
         $tipoResiduo = $datos['tipoResiduo'] ?? 'mezclado';
         $estado      = $datos['estado'] ?? 'operativo';
+<<<<<<< HEAD
         $nivelLlenado = $datos['nivelLlenado'] ?? 'vacio';
+=======
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
         $lat = isset($datos['lat']) && $datos['lat'] !== '' && $datos['lat'] !== null ? (float)$datos['lat'] : null;
         $lng = isset($datos['lng']) && $datos['lng'] !== '' && $datos['lng'] !== null ? (float)$datos['lng'] : null;
 
@@ -98,7 +108,11 @@ class ContenedorController extends ControladorBase
             $this->error('Marcá la ubicación del contenedor en el mapa.', 400);
         }
 
+<<<<<<< HEAD
         $contenedor = new Contenedor($id, $codigo, $direccion, $tipoResiduo, $estado, $lat, $lng, $nivelLlenado);
+=======
+        $contenedor = new Contenedor($id, $codigo, $direccion, $tipoResiduo, $estado, $lat, $lng);
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
         if (!$this->repo->actualizar($contenedor)) {
             $this->error('No existe un contenedor con ese id.', 404);
         }

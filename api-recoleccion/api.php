@@ -12,6 +12,7 @@ require __DIR__ . '/app/models/Camion.php';
 require __DIR__ . '/app/models/RepositorioCamiones.php';
 require __DIR__ . '/app/models/Flota.php';
 require __DIR__ . '/app/models/RepositorioFlotas.php';
+<<<<<<< HEAD
 require __DIR__ . '/app/models/Ruta.php';
 require __DIR__ . '/app/models/RepositorioRutas.php';
 require __DIR__ . '/app/controllers/ControladorBase.php';
@@ -25,6 +26,16 @@ use App\Models\RepositorioRutas;
 use App\Controllers\CamionController;
 use App\Controllers\FlotaController;
 use App\Controllers\RutaController;
+=======
+require __DIR__ . '/app/controllers/ControladorBase.php';
+require __DIR__ . '/app/controllers/CamionController.php';
+require __DIR__ . '/app/controllers/FlotaController.php';
+
+use App\Models\RepositorioCamiones;
+use App\Models\RepositorioFlotas;
+use App\Controllers\CamionController;
+use App\Controllers\FlotaController;
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
@@ -46,7 +57,10 @@ $ruta = '/' . trim($ruta, '/');
 
 $camionCtrl = new CamionController(new RepositorioCamiones());
 $flotaCtrl  = new FlotaController(new RepositorioFlotas());
+<<<<<<< HEAD
 $rutaCtrl   = new RutaController(new RepositorioRutas());
+=======
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
 
 switch ($metodo . ' ' . $ruta) {
     case 'GET /camiones':
@@ -85,6 +99,7 @@ switch ($metodo . ' ' . $ruta) {
         $flotaCtrl->eliminar();
         break;
 
+<<<<<<< HEAD
     // ---- Rutas de recolección ----
     case 'GET /rutas':
         $rutaCtrl->listar();
@@ -114,6 +129,8 @@ switch ($metodo . ' ' . $ruta) {
         $rutaCtrl->quitarContenedor();
         break;
 
+=======
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
     default:
         http_response_code(404);
         header('Content-Type: application/json; charset=utf-8');

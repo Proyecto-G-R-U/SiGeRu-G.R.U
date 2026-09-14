@@ -34,6 +34,7 @@ CREATE TABLE cuadrilla (
 );
 
 -- ------------------------------------------------------------
+<<<<<<< HEAD
 -- INSTALACION — centros de acopio, plantas de clasificación y vertederos
 -- Estrategia: tabla única + columna "tipo" (single table inheritance),
 -- igual que usuario/rol. Las clases CentroAcopio, PlantaClasificacion y
@@ -53,6 +54,8 @@ CREATE TABLE instalacion (
 );
 
 -- ------------------------------------------------------------
+=======
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
 -- USUARIO — jerarquía Usuario/Administrador/Operario/Vecino
 -- Estrategia: tabla única + columna "rol" (single table inheritance).
 -- Los campos "especialidad" y "cuadrilla_id" solo aplican a operarios
@@ -66,11 +69,16 @@ CREATE TABLE usuario (
     rol           ENUM('administrador','operario','vecino') NOT NULL,
     especialidad  ENUM('recoleccion','clasificacion','vertedero') NULL,
     cuadrilla_id  INT NULL,
+<<<<<<< HEAD
     instalacion_id INT NULL,                    -- instalación asignada (clasificación/vertedero)
     CONSTRAINT fk_usuario_cuadrilla
         FOREIGN KEY (cuadrilla_id) REFERENCES cuadrilla(id) ON DELETE SET NULL,
     CONSTRAINT fk_usuario_instalacion
         FOREIGN KEY (instalacion_id) REFERENCES instalacion(id) ON DELETE SET NULL
+=======
+    CONSTRAINT fk_usuario_cuadrilla
+        FOREIGN KEY (cuadrilla_id) REFERENCES cuadrilla(id) ON DELETE SET NULL
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
 );
 
 -- ------------------------------------------------------------
@@ -81,8 +89,12 @@ CREATE TABLE contenedor (
     codigo       VARCHAR(20)  NOT NULL UNIQUE,
     direccion    VARCHAR(200) NOT NULL,
     tipo_residuo ENUM('mezclado','reciclable') NOT NULL,
+<<<<<<< HEAD
     estado        ENUM('operativo','roto') NOT NULL DEFAULT 'operativo',   -- integridad física
     nivel_llenado ENUM('vacio','lleno','desbordado') NOT NULL DEFAULT 'vacio', -- cuánto tiene
+=======
+    estado       ENUM('operativo','roto','desbordado') NOT NULL DEFAULT 'operativo',
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
     lat          DECIMAL(10,7) NULL,
     lng          DECIMAL(10,7) NULL
 );
@@ -104,6 +116,7 @@ CREATE TABLE camion (
         FOREIGN KEY (cuadrilla_id) REFERENCES cuadrilla(id) ON DELETE SET NULL
 );
 
+<<<<<<< HEAD
 
 -- ------------------------------------------------------------
 -- MAQUINARIA — inventario de equipos, herramientas y repuestos.
@@ -177,6 +190,8 @@ CREATE TABLE ruta_contenedor (
         FOREIGN KEY (contenedor_id) REFERENCES contenedor(id) ON DELETE CASCADE
 );
 
+=======
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
 -- ============================================================
 -- DATOS DE PRUEBA de las tablas sin contraseñas.
 -- Los USUARIOS no se insertan acá: los crea el código PHP la primera
@@ -192,15 +207,23 @@ INSERT INTO flota (id, nombre, zona) VALUES
 INSERT INTO cuadrilla (id, nombre, zona) VALUES
     (1, 'Cuadrilla Norte', 'Zona Norte');
 
+<<<<<<< HEAD
 INSERT INTO contenedor (id, codigo, direccion, tipo_residuo, estado, nivel_llenado, lat, lng) VALUES
     (1, 'CNT-102', 'Av. Italia y Bulevar Artigas', 'reciclable', 'operativo', 'vacio',      -34.9020, -56.1550),
     (2, 'CNT-403', 'Rambla y Buceo',               'mezclado',   'operativo', 'desbordado', -34.9110, -56.1360),
     (3, 'CNT-210', 'Pocitos, 26 de Marzo',         'reciclable', 'roto',      'lleno',      -34.9095, -56.1520);
+=======
+INSERT INTO contenedor (id, codigo, direccion, tipo_residuo, estado, lat, lng) VALUES
+    (1, 'CNT-102', 'Av. Italia y Bulevar Artigas', 'reciclable', 'operativo',  -34.9020, -56.1550),
+    (2, 'CNT-403', 'Rambla y Buceo',               'mezclado',   'desbordado', -34.9110, -56.1360),
+    (3, 'CNT-210', 'Pocitos, 26 de Marzo',         'reciclable', 'operativo',  -34.9095, -56.1520);
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
 
 INSERT INTO camion (id, patente, modelo, estado, disponibilidad, flota_id, cuadrilla_id) VALUES
     (1, 'STP 1234', 'Volvo FE',       'operativo',     'en_ruta',    1, 1),
     (2, 'STP 5678', 'Mercedes Atego', 'operativo',     'disponible', 1, NULL),
     (3, 'STP 9012', 'Iveco Tector',   'mantenimiento', 'disponible', 2, NULL);
+<<<<<<< HEAD
 
 INSERT INTO instalacion (id, nombre, direccion, tipo, capacidad_maxima, ocupacion_actual, tipo_residuo, estado, lat, lng) VALUES
     (1, 'Centro de Acopio Centro',   'Av. Rondeau 1580',         'acopio',        150,  40, 'reciclable', 'operativa', -34.8890, -56.1880),
@@ -226,3 +249,5 @@ INSERT INTO ruta_contenedor (ruta_id, contenedor_id, orden) VALUES
     (1, 3, 1),
     (1, 1, 2),
     (2, 2, 1);
+=======
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c

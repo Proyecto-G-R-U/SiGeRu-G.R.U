@@ -24,8 +24,12 @@ class RepositorioContenedores extends RepositorioSql
             $f['tipo_residuo'],
             $f['estado'],
             $f['lat'] !== null ? (float)$f['lat'] : null,
+<<<<<<< HEAD
             $f['lng'] !== null ? (float)$f['lng'] : null,
             $f['nivel_llenado'] ?? 'vacio'
+=======
+            $f['lng'] !== null ? (float)$f['lng'] : null
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
         );
     }
 
@@ -34,10 +38,17 @@ class RepositorioContenedores extends RepositorioSql
     public function agregar(Contenedor $c): void
     {
         $this->consulta(
+<<<<<<< HEAD
             'INSERT INTO contenedor (id, codigo, direccion, tipo_residuo, estado, nivel_llenado, lat, lng)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
             [$c->getId(), $c->getCodigo(), $c->getDireccion(), $c->getTipoResiduo(),
              $c->getEstado(), $c->getNivelLlenado(), $c->getLat(), $c->getLng()]
+=======
+            'INSERT INTO contenedor (id, codigo, direccion, tipo_residuo, estado, lat, lng)
+             VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [$c->getId(), $c->getCodigo(), $c->getDireccion(), $c->getTipoResiduo(),
+             $c->getEstado(), $c->getLat(), $c->getLng()]
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
         );
     }
 
@@ -45,10 +56,17 @@ class RepositorioContenedores extends RepositorioSql
     public function actualizar(Contenedor $c): bool
     {
         $this->consulta(
+<<<<<<< HEAD
             'UPDATE contenedor SET codigo = ?, direccion = ?, tipo_residuo = ?, estado = ?,
                     nivel_llenado = ?, lat = ?, lng = ? WHERE id = ?',
             [$c->getCodigo(), $c->getDireccion(), $c->getTipoResiduo(), $c->getEstado(),
              $c->getNivelLlenado(), $c->getLat(), $c->getLng(), $c->getId()]
+=======
+            'UPDATE contenedor SET codigo = ?, direccion = ?, tipo_residuo = ?, estado = ?, lat = ?, lng = ?
+             WHERE id = ?',
+            [$c->getCodigo(), $c->getDireccion(), $c->getTipoResiduo(), $c->getEstado(),
+             $c->getLat(), $c->getLng(), $c->getId()]
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
         );
         return $this->fila('SELECT id FROM contenedor WHERE id = ?', [$c->getId()]) !== null;
     }

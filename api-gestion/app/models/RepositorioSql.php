@@ -78,6 +78,7 @@ abstract class RepositorioSql
     // ---------------- Helpers de consulta ----------------
 
     /** Ejecuta una consulta con parámetros y devuelve el statement. */
+<<<<<<< HEAD
     /**
      * Ejecuta una consulta con parámetros y devuelve el statement.
      *
@@ -125,6 +126,13 @@ abstract class RepositorioSql
             'detalle' => $e->getMessage(),
         ], JSON_UNESCAPED_UNICODE);
         exit;
+=======
+    protected function consulta(string $sql, array $params = []): \PDOStatement
+    {
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt;
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
     }
 
     /** Devuelve todas las filas de una consulta como arrays. */

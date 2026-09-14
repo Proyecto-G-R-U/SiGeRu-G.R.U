@@ -24,20 +24,31 @@ namespace App\Models;
  */
 abstract class Operario extends Usuario
 {
+<<<<<<< HEAD
     protected ?string $cuadrilla;    // agrupación que asigna el admin (puede ser null)
     protected ?int $instalacionId;   // instalación asignada (clasificación/vertedero)
+=======
+    protected ?string $cuadrilla; // agrupación que asigna el admin (puede ser null)
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
 
     public function __construct(
         int $id,
         string $nombre,
         string $email,
         string $passwordHash,
+<<<<<<< HEAD
         ?string $cuadrilla = null,
         ?int $instalacionId = null
     ) {
         parent::__construct($id, $nombre, $email, $passwordHash);
         $this->cuadrilla = $cuadrilla;
         $this->instalacionId = $instalacionId;
+=======
+        ?string $cuadrilla = null
+    ) {
+        parent::__construct($id, $nombre, $email, $passwordHash);
+        $this->cuadrilla = $cuadrilla;
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
     }
 
     /** Todos los operarios comparten el rol base "operario". */
@@ -55,9 +66,12 @@ abstract class Operario extends Usuario
     public function getCuadrilla(): ?string    { return $this->cuadrilla; }
     public function setCuadrilla(?string $c): void { $this->cuadrilla = $c; }
 
+<<<<<<< HEAD
     public function getInstalacionId(): ?int      { return $this->instalacionId; }
     public function setInstalacionId(?int $i): void { $this->instalacionId = $i; }
 
+=======
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
     /**
      * Al serializar a JSON agregamos especialidad y cuadrilla a lo que ya
      * trae el padre (id, nombre, email, rol). Como getEspecialidad() es
@@ -68,7 +82,10 @@ abstract class Operario extends Usuario
         $base = parent::jsonSerialize();
         $base['especialidad'] = $this->getEspecialidad();
         $base['cuadrilla'] = $this->cuadrilla;
+<<<<<<< HEAD
         $base['instalacionId'] = $this->instalacionId;
+=======
+>>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
         return $base;
     }
 }
