@@ -29,11 +29,13 @@ class CuadrillaController extends ControladorBase
 
     public function listar(): void
     {
+        $this->exigirLogin();
         $this->responder($this->repo->todos(), 200);
     }
 
     public function crear(): void
     {
+        $this->exigirAdmin();
         $datos = $this->leerJson();
         $nombre = trim($datos['nombre'] ?? '');
         $zona   = trim($datos['zona'] ?? '');
@@ -52,6 +54,7 @@ class CuadrillaController extends ControladorBase
 
     public function eliminar(): void
     {
+        $this->exigirAdmin();
         $datos = $this->leerJson();
         $id = (int)($datos['id'] ?? 0);
         if ($id <= 0) {
@@ -71,6 +74,7 @@ class CuadrillaController extends ControladorBase
      */
     public function agregarOperario(): void
     {
+        $this->exigirAdmin();
         $datos = $this->leerJson();
         $cuadrillaId = (int)($datos['cuadrillaId'] ?? 0);
         $operarioId  = (int)($datos['operarioId'] ?? 0);
@@ -102,6 +106,7 @@ class CuadrillaController extends ControladorBase
      */
     public function quitarOperario(): void
     {
+        $this->exigirAdmin();
         $datos = $this->leerJson();
         $cuadrillaId = (int)($datos['cuadrillaId'] ?? 0);
         $operarioId  = (int)($datos['operarioId'] ?? 0);
@@ -121,6 +126,7 @@ class CuadrillaController extends ControladorBase
      */
     public function operariosLibres(): void
     {
+        $this->exigirAdmin();
         $ocupados = $this->repo->operariosOcupados();
         $libres = [];
         foreach ($this->repoUsuarios->todos() as $u) {

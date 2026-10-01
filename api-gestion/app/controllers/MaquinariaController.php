@@ -28,11 +28,13 @@ class MaquinariaController extends ControladorBase
 
     public function listar(): void
     {
+        $this->exigirLogin();
         $this->responder($this->repo->todos(), 200);
     }
 
     public function crear(): void
     {
+        $this->exigirAdmin();
         $datos = $this->leerJson();
         $nombre    = trim($datos['nombre'] ?? '');
         $categoria = $datos['categoria'] ?? 'maquinaria';
@@ -62,6 +64,7 @@ class MaquinariaController extends ControladorBase
 
     public function modificar(): void
     {
+        $this->exigirAdmin();
         $datos = $this->leerJson();
         $id        = (int)($datos['id'] ?? 0);
         $nombre    = trim($datos['nombre'] ?? '');
@@ -94,6 +97,7 @@ class MaquinariaController extends ControladorBase
 
     public function eliminar(): void
     {
+        $this->exigirAdmin();
         $datos = $this->leerJson();
         $id = (int)($datos['id'] ?? 0);
         if ($id <= 0) {

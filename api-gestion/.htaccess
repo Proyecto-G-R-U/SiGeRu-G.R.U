@@ -10,6 +10,12 @@
 
 RewriteEngine On
 
+# Apache no siempre pasa la cabecera Authorization a PHP al reescribir la
+# URL. Esta línea la conserva: es la que lleva el token de sesión y sin
+# ella todos los pedidos parecerían anónimos.
+RewriteCond %{HTTP:Authorization} .
+RewriteRule ^ - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
 # Si el pedido NO es un archivo ni una carpeta real...
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d

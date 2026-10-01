@@ -91,15 +91,36 @@
     // Helper para peticiones GET que evita el caché del navegador. Sin esto,
     // Chrome a veces devuelve la respuesta vieja y las listas no se actualizan
     // hasta refrescar la página. 'no-store' obliga a pedir datos frescos.
-    function fetchGet(url) {
-        return fetch(url, { cache: 'no-store' });
+    // Token de sesión que autentica cada pedido a las APIs.
+    function tokenActual() {
+        try { return sessionStorage.getItem('sigeru_token') || ''; } catch (e) { return ''; }
     }
 
-<<<<<<< HEAD
+    // Cabeceras para los pedidos POST: tipo de contenido + autorización.
+    function cabeceras() {
+        const h = { 'Content-Type': 'application/json' };
+        const t = tokenActual();
+        if (t) h['Authorization'] = 'Bearer ' + t;
+        return h;
+    }
+
+    function fetchGet(url) {
+        const h = {};
+        const t = tokenActual();
+        if (t) h['Authorization'] = 'Bearer ' + t;
+        return fetch(url, { cache: 'no-store', headers: h });
+    }
+
     // Interpreta la respuesta de una API. Si el servidor devolvió algo que no
     // es JSON (por ejemplo una página de error de PHP), lo detecta y arma un
     // mensaje útil en vez de dejar que falle el .json() sin explicación.
     async function leerRespuesta(resp) {
+        // 401 = el token ya no vale (sesión cerrada o expirada): volvemos al login.
+        if (resp.status === 401) {
+            alert('Tu sesión expiró. Volvé a iniciar sesión.');
+            cerrarSesion();
+            return { ok: false, datos: { error: 'Sesión expirada.' } };
+        }
         const tipo = resp.headers.get('content-type') || '';
         if (!tipo.includes('application/json')) {
             const texto = await resp.text();
@@ -117,8 +138,6 @@
                (datos.detalle ? ' [' + datos.detalle + ']' : '');
     }
 
-=======
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
     // Usuario logueado (para saber su rol/especialidad y su email).
     let usuarioActual = null;
 
@@ -172,11 +191,12 @@
         try {
             const resp = await fetch(API_USUARIOS + '/login', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: cabeceras(),
                 body: JSON.stringify(datos),
             });
             const resultado = await resp.json();
             if (resp.ok) {
+                try { sessionStorage.setItem('sigeru_token', resultado.token || ''); } catch (e) {}
                 entrarAlPanel(resultado.usuario);
             } else {
                 loginMsg.textContent = (resultado.error || 'No se pudo iniciar sesión.') +
@@ -219,7 +239,12 @@
         mostrarSeccion('inicio');
     }
 
-    function cerrarSesion() {
+    async function cerrarSesion() {
+        // Le avisamos a la API para que invalide el token del lado del servidor.
+        try {
+            await fetch(API_USUARIOS + '/logout', { method: 'POST', headers: cabeceras() });
+        } catch (e) { /* si falla, igual limpiamos del lado del navegador */ }
+        try { sessionStorage.removeItem('sigeru_token'); } catch (e) {}
         usuarioActual = null;
         try { sessionStorage.removeItem('sigeru_usuario'); } catch (e) {}
         document.body.className = '';
@@ -246,7 +271,6 @@
     // -------------------------------------------------------------
     function construirMenu(rol) {
         const nav = document.getElementById('nav-menu');
-<<<<<<< HEAD
         let items = [
             { id: 'inicio',      icono: 'home',           texto: 'Inicio' },
             // El mapa de incidencias lo ve TODO usuario logueado: los vecinos y
@@ -258,9 +282,6 @@
         if (rol === 'vecino') {
             items.push({ id: 'guia', icono: 'menu_book', texto: 'Guía de reciclaje' });
         }
-=======
-        let items = [{ id: 'inicio', icono: 'home', texto: 'Inicio' }];
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
 
         if (rol === 'administrador') {
             items.push(
@@ -268,11 +289,8 @@
                 { id: 'contenedores', icono: 'delete',         texto: 'Contenedores' },
                 { id: 'camiones',     icono: 'local_shipping', texto: 'Camiones' },
                 { id: 'flotas',       icono: 'grid_view',      texto: 'Flotas' },
-<<<<<<< HEAD
                 { id: 'instalaciones', icono: 'factory',      texto: 'Instalaciones' },
                 { id: 'rutas',        icono: 'route',          texto: 'Rutas' },
-=======
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
             );
         }
 
@@ -295,7 +313,6 @@
     // -------------------------------------------------------------
     function mostrarSeccion(id) {
         seccionActual = id; // recordamos dónde estamos
-<<<<<<< HEAD
 
         // Al reemplazar el contenido se destruyen los divs de los mapas, así
         // que soltamos las referencias viejas para que se puedan recrear.
@@ -306,8 +323,6 @@
         marcadorInstNuevo = null; capaPinesInst = null;
         coordInstNueva = { lat: null, lng: null };
 
-=======
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
         // marcar activo en el menú
         document.querySelectorAll('.nav-item').forEach(function (a) { a.classList.remove('activo'); });
         const navEl = document.getElementById('nav-' + id);
@@ -323,7 +338,6 @@
                 content.innerHTML = '<div class="bienvenida"><h2>Hola, ' + usuarioActual.nombre +
                     '</h2><p>Bienvenido al panel administrativo. Usá el menú lateral para gestionar ' +
                     'usuarios, contenedores, camiones y flotas.</p></div>';
-<<<<<<< HEAD
             } else if (rol === 'operario_recoleccion') {
                 panelRecoleccion();
             } else if (rol === 'operario_clasificacion') {
@@ -333,11 +347,6 @@
             } else {
                 content.innerHTML = '<div class="bienvenida"><h2>Hola, ' + usuarioActual.nombre +
                     '</h2><p>Bienvenido a tu panel.</p></div>';
-=======
-            } else {
-                content.innerHTML = '<div class="bienvenida"><h2>Hola, ' + usuarioActual.nombre +
-                    '</h2><p>Bienvenido a tu panel. Por el momento este panel es informativo.</p></div>';
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
             }
             return;
         }
@@ -347,13 +356,10 @@
         if (id === 'contenedores') { content.innerHTML = plantillaContenedores(); cargarContenedores(); }
         if (id === 'camiones')     { content.innerHTML = plantillaCamiones();     cargarCamiones(); cargarFlotasEnSelect(); cargarCuadrillasEnSelect(); }
         if (id === 'flotas')       { content.innerHTML = plantillaFlotas();       cargarPanelFlotas(); }
-<<<<<<< HEAD
         if (id === 'instalaciones'){ content.innerHTML = plantillaInstalaciones(); cargarInstalaciones(); }
         if (id === 'incidencias')  { content.innerHTML = plantillaIncidencias();  cargarIncidencias(); }
         if (id === 'guia')         { content.innerHTML = plantillaGuia(); }
         if (id === 'rutas')        { content.innerHTML = plantillaRutas();       cargarRutas(); }
-=======
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
     }
 
     // Vuelve a dibujar la sección actual completa (tabla + selectores + mapa),
@@ -396,13 +402,8 @@
         + '      eficiente en cada zona.</p></div>'
         + '    <div class="lv-card"><span class="material-icons-outlined">report_problem</span>'
         + '      <h3>Reportá problemas</h3>'
-<<<<<<< HEAD
         + '      <p>¿Viste un contenedor roto o desbordado? Entrá a Incidencias, marcalo '
         + '      en el mapa y avisanos. Nos ayudás a llegar antes.</p></div>'
-=======
-        + '      <p>Pronto vas a poder avisar sobre contenedores desbordados o dañados directamente '
-        + '      desde acá.</p></div>'
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
         + '  </div>'
         + '  <div class="lv-footer">'
         + '    <p>Juntos hacemos una ciudad más limpia.</p>'
@@ -453,18 +454,12 @@
         + '<div><label>Tipo de residuo</label><select id="c-tipo">'
         + '<option value="mezclado">Mezclado</option>'
         + '<option value="reciclable">Reciclable</option></select></div>'
-<<<<<<< HEAD
         + '<div><label>Estado (integridad)</label><select id="c-estado">'
         + '<option value="operativo">Operativo</option>'
         + '<option value="roto">Roto</option></select></div>'
         + '<div><label>Nivel de llenado</label><select id="c-llenado">'
         + '<option value="vacio">Vacío</option>'
         + '<option value="lleno">Lleno</option>'
-=======
-        + '<div><label>Estado</label><select id="c-estado">'
-        + '<option value="operativo">Operativo</option>'
-        + '<option value="roto">Roto</option>'
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
         + '<option value="desbordado">Desbordado</option></select></div>'
         + '<div class="full"><label>Ubicación (hacé click en el mapa para marcarla)</label>'
         + '<div id="mapa-crear" class="mapa"></div>'
@@ -474,11 +469,7 @@
         + '<h2 class="sec-titulo">Contenedores en el mapa</h2>'
         + '<div id="mapa-listado" class="mapa mapa-grande"></div>'
         + '<table class="tabla"><thead><tr><th>ID</th><th>Código</th><th>Dirección</th>'
-<<<<<<< HEAD
         + '<th>Tipo</th><th>Estado</th><th>Llenado</th><th>Acción</th></tr></thead>'
-=======
-        + '<th>Tipo</th><th>Estado</th><th>Acción</th></tr></thead>'
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
         + '<tbody id="tabla-contenedores"></tbody></table>';
     }
 
@@ -503,7 +494,6 @@
         + '<th>Acción</th></tr></thead><tbody id="tabla-camiones"></tbody></table>';
     }
 
-<<<<<<< HEAD
     // Sección Incidencias: la ven TODOS los roles. El mapa y el botón de
     // reportar son iguales para todos; el admin ve además la gestión.
     // Guía educativa de clasificación de residuos para los vecinos
@@ -663,8 +653,6 @@
         + '<div id="panel-inventario"></div>';
     }
 
-=======
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
     function plantillaFlotas() {
         return ''
         + '<div class="panel"><h3>Nueva flota</h3>'
@@ -730,7 +718,7 @@
         try {
             const resp = await fetch(API_USUARIOS + '/usuarios', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: cabeceras(),
                 body: JSON.stringify(datos),
             });
             const resultado = await resp.json();
@@ -752,7 +740,7 @@
         try {
             const resp = await fetch(API_USUARIOS + '/usuarios/eliminar', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: cabeceras(),
                 body: JSON.stringify({ id: id, adminEmail: usuarioActual.email }),
             });
             const resultado = await resp.json();
@@ -774,7 +762,6 @@
     let capaPines = null;                        // capa de pines del listado
 
     // Colores del pin según estado del contenedor.
-<<<<<<< HEAD
     // Color del pin según la INTEGRIDAD del contenedor (no el llenado).
     function colorEstado(estado) {
         if (estado === 'roto') return '#f9a825';  // amarillo
@@ -798,12 +785,6 @@
         const textos = { vacio: 'Vacío', lleno: 'Lleno', desbordado: 'Desbordado' };
         return '<span class="pill pill-' + (clases[nivel] || 'ok') + '">' +
                (textos[nivel] || nivel) + '</span>';
-=======
-    function colorEstado(estado) {
-        if (estado === 'desbordado') return '#d32f2f';
-        if (estado === 'roto')       return '#f9a825';
-        return '#1b8536'; // operativo
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
     }
 
     // Crea un ícono de pin de color (div simple, sin imágenes externas).
@@ -884,12 +865,8 @@
             if (tbody) {
                 tbody.innerHTML = lista.map(function (c) {
                     return '<tr><td>' + c.id + '</td><td>' + c.codigo + '</td><td>' +
-<<<<<<< HEAD
                         c.direccion + '</td><td>' + c.tipoResiduo + '</td><td>' +
                         etiquetaIntegridad(c.estado) + '</td><td>' + etiquetaLlenado(c.nivelLlenado) + '</td><td>' +
-=======
-                        c.direccion + '</td><td>' + c.tipoResiduo + '</td><td>' + c.estado + '</td><td>' +
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
                         '<button class="btn-editar" onclick="editarContenedor(' + c.id + ')">Editar</button> ' +
                         '<button class="btn-eliminar" onclick="eliminarContenedor(' + c.id + ')">Eliminar</button>' +
                         '</td></tr>';
@@ -903,13 +880,9 @@
                     if (c.lat === null || c.lng === null) return;
                     L.marker([c.lat, c.lng], { icon: iconoPin(colorEstado(c.estado)) })
                         .bindPopup('<b>' + c.codigo + '</b><br>' + c.direccion +
-<<<<<<< HEAD
                                    '<br>Tipo: ' + c.tipoResiduo +
                                    '<br>Estado: ' + (c.estado === 'roto' ? 'Roto' : 'Operativo') +
                                    '<br>Llenado: ' + textoLlenado(c.nivelLlenado))
-=======
-                                   '<br>Tipo: ' + c.tipoResiduo + '<br>Estado: ' + c.estado)
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
                         .addTo(capaPines);
                 });
             }
@@ -930,29 +903,20 @@
             codigo:      document.getElementById('c-codigo').value.trim(),
             direccion:   document.getElementById('c-direccion').value.trim(),
             tipoResiduo: document.getElementById('c-tipo').value,
-<<<<<<< HEAD
             estado:       document.getElementById('c-estado').value,
             nivelLlenado: document.getElementById('c-llenado').value,
-=======
-            estado:      document.getElementById('c-estado').value,
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
             lat:         coordNueva.lat,
             lng:         coordNueva.lng,
         };
         try {
             const resp = await fetch(API_GESTION + '/contenedores', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: cabeceras(),
                 body: JSON.stringify(datos),
             });
-<<<<<<< HEAD
             const r = await leerRespuesta(resp);
             const resultado = r.datos;
             if (r.ok) {
-=======
-            const resultado = await resp.json();
-            if (resp.ok) {
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
                 msg.textContent = 'Contenedor agregado.'; msg.classList.add('ok');
                 e.target.reset();
                 // Limpiamos el pin temporal y las coords.
@@ -962,12 +926,8 @@
                 if (c) c.textContent = 'Sin ubicación seleccionada.';
                 refrescarContenedores();
             } else {
-<<<<<<< HEAD
                 msg.textContent = textoError(resultado, 'No se pudo agregar.');
                 msg.classList.add('err');
-=======
-                msg.textContent = resultado.error; msg.classList.add('err');
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
             }
         } catch (err) {
             msg.textContent = 'Error de conexión.'; msg.classList.add('err');
@@ -979,7 +939,7 @@
         try {
             const resp = await fetch(API_GESTION + '/contenedores/eliminar', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: cabeceras(),
                 body: JSON.stringify({ id: id }),
             });
             if (resp.ok) refrescarContenedores();
@@ -1064,7 +1024,7 @@
         try {
             const resp = await fetch(API_USUARIOS + '/cuadrillas/agregar-operario', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: cabeceras(),
                 body: JSON.stringify({ cuadrillaId: cuadrillaId, operarioId: parseInt(operarioId) }),
             });
             if (resp.ok) recargarSeccionActual();
@@ -1077,7 +1037,7 @@
         try {
             const resp = await fetch(API_USUARIOS + '/cuadrillas/quitar-operario', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: cabeceras(),
                 body: JSON.stringify({ cuadrillaId: cuadrillaId, operarioId: operarioId }),
             });
             if (resp.ok) recargarSeccionActual();
@@ -1102,7 +1062,7 @@
         try {
             const resp = await fetch(API_USUARIOS + '/cuadrillas', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: cabeceras(),
                 body: JSON.stringify(datos),
             });
             const resultado = await resp.json();
@@ -1122,7 +1082,7 @@
         try {
             const resp = await fetch(API_USUARIOS + '/cuadrillas/eliminar', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: cabeceras(),
                 body: JSON.stringify({ id: id }),
             });
             if (resp.ok) recargarSeccionActual();
@@ -1225,7 +1185,7 @@
         try {
             const resp = await fetch(API_RECOLECCION + '/camiones', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: cabeceras(),
                 body: JSON.stringify(datos),
             });
             const resultado = await resp.json();
@@ -1244,7 +1204,7 @@
         try {
             const resp = await fetch(API_RECOLECCION + '/camiones/asignar-cuadrilla', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: cabeceras(),
                 body: JSON.stringify({ id: camionId, cuadrillaId: cuadrillaId || null }),
             });
             if (resp.ok) { recargarSeccionActual(); }
@@ -1256,7 +1216,7 @@
         try {
             const resp = await fetch(API_RECOLECCION + '/camiones/asignar-flota', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: cabeceras(),
                 body: JSON.stringify({ id: camionId, flotaId: flotaId || null }),
             });
             if (!resp.ok) { const r = await resp.json(); alert(r.error || 'No se pudo mover.'); }
@@ -1268,7 +1228,7 @@
         try {
             const resp = await fetch(API_RECOLECCION + '/camiones/eliminar', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: cabeceras(),
                 body: JSON.stringify({ id: id }),
             });
             if (resp.ok) recargarSeccionActual();
@@ -1290,7 +1250,7 @@
         try {
             const resp = await fetch(API_RECOLECCION + '/flotas', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: cabeceras(),
                 body: JSON.stringify(datos),
             });
             const resultado = await resp.json();
@@ -1383,7 +1343,7 @@
         try {
             const resp = await fetch(API_RECOLECCION + '/camiones/asignar-flota', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: cabeceras(),
                 body: JSON.stringify({ id: parseInt(camionId), flotaId: flotaId }),
             });
             if (resp.ok) recargarSeccionActual();
@@ -1408,7 +1368,7 @@
         try {
             const resp = await fetch(API_RECOLECCION + '/flotas/eliminar', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: cabeceras(),
                 body: JSON.stringify({ id: id }),
             });
             if (resp.ok) recargarSeccionActual();
@@ -1417,7 +1377,6 @@
     }
 
     // =============================================================
-<<<<<<< HEAD
     //  RUTAS DE RECOLECCIÓN (admin)
     // =============================================================
     let cacheRutas = [];
@@ -1534,7 +1493,7 @@
         };
         try {
             const resp = await fetch(API_RECOLECCION + '/rutas', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: cabeceras(),
                 body: JSON.stringify(datos),
             });
             const res = await leerRespuesta(resp);
@@ -1579,7 +1538,7 @@
     async function accionRuta(ruta, datos) {
         try {
             const resp = await fetch(API_RECOLECCION + ruta, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: cabeceras(),
                 body: JSON.stringify(datos),
             });
             const res = await leerRespuesta(resp);
@@ -1619,7 +1578,7 @@
             };
             try {
                 const resp = await fetch(API_RECOLECCION + '/rutas/modificar', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    method: 'POST', headers: cabeceras(),
                     body: JSON.stringify(datos),
                 });
                 const res = await leerRespuesta(resp);
@@ -1956,7 +1915,7 @@
             };
             try {
                 const resp = await fetch(API_GESTION + '/incidencias', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    method: 'POST', headers: cabeceras(),
                     body: JSON.stringify(datos),
                 });
                 const r = await resp.json();
@@ -2061,7 +2020,7 @@
     async function cambiarEstadoIncidencia(id, estado) {
         try {
             const resp = await fetch(API_GESTION + '/incidencias/estado', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: cabeceras(),
                 body: JSON.stringify({ id: id, estado: estado }),
             });
             if (resp.ok) recargarSeccionActual();
@@ -2072,7 +2031,7 @@
     async function asignarCuadrillaIncidencia(id, cuadrillaId) {
         try {
             const resp = await fetch(API_GESTION + '/incidencias/asignar-cuadrilla', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: cabeceras(),
                 body: JSON.stringify({ id: id, cuadrillaId: cuadrillaId || null }),
             });
             if (!resp.ok) { const r = await resp.json(); alert(r.error || 'No se pudo asignar.'); }
@@ -2084,7 +2043,7 @@
         if (!confirm('¿Marcar esta incidencia como resuelta? Pasará al historial.')) return;
         try {
             const resp = await fetch(API_GESTION + '/incidencias/estado', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: cabeceras(),
                 body: JSON.stringify({ id: id, estado: 'resuelta' }),
             });
             if (resp.ok) recargarSeccionActual();
@@ -2096,7 +2055,7 @@
         if (!confirm('¿Eliminar esta incidencia definitivamente?')) return;
         try {
             const resp = await fetch(API_GESTION + '/incidencias/eliminar', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: cabeceras(),
                 body: JSON.stringify({ id: id }),
             });
             if (resp.ok) recargarSeccionActual();
@@ -2242,7 +2201,7 @@
         try {
             const resp = await fetch(API_GESTION + '/instalaciones', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: cabeceras(),
                 body: JSON.stringify(datos),
             });
             const r = await resp.json();
@@ -2266,7 +2225,7 @@
         try {
             const resp = await fetch(API_GESTION + '/instalaciones/eliminar', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: cabeceras(),
                 body: JSON.stringify({ id: id }),
             });
             if (resp.ok) recargarSeccionActual();
@@ -2340,7 +2299,7 @@
         try {
             const resp = await fetch(API_GESTION + '/maquinaria', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: cabeceras(),
                 body: JSON.stringify(datos),
             });
             const res = await leerRespuesta(resp);
@@ -2361,7 +2320,7 @@
         try {
             const resp = await fetch(API_GESTION + '/maquinaria/eliminar', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: cabeceras(),
                 body: JSON.stringify({ id: id }),
             });
             if (resp.ok) recargarSeccionActual();
@@ -2370,8 +2329,6 @@
     }
 
     // =============================================================
-=======
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
     //  MODAL DE EDICIÓN (reutilizable)
     // =============================================================
     function abrirModal(titulo, htmlCuerpo, onGuardar) {
@@ -2428,7 +2385,7 @@
             if (datos.rol === 'operario') datos.especialidad = document.getElementById('e-especialidad').value;
             try {
                 const resp = await fetch(API_USUARIOS + '/usuarios/modificar', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    method: 'POST', headers: cabeceras(),
                     body: JSON.stringify(datos),
                 });
                 const r = await resp.json();
@@ -2444,10 +2401,7 @@
 
     // -------- EDITAR CONTENEDOR --------
     let modalMapa = null, modalMarcador = null, modalCoord = { lat: null, lng: null };
-<<<<<<< HEAD
     let modalMapaInst = null, modalMarcadorInst = null, modalCoordInst = { lat: null, lng: null };
-=======
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
     function editarContenedor(id) {
         // Buscamos el contenedor en la última lista cargada.
         fetchGet(API_GESTION + '/contenedores').then(function (resp) { return resp.json(); }).then(function (lista) {
@@ -2461,7 +2415,6 @@
                 + '<label>Tipo de residuo</label><select id="e-tipo">'
                 + '<option value="mezclado"' + (c.tipoResiduo === 'mezclado' ? ' selected' : '') + '>Mezclado</option>'
                 + '<option value="reciclable"' + (c.tipoResiduo === 'reciclable' ? ' selected' : '') + '>Reciclable</option></select>'
-<<<<<<< HEAD
                 + '<label>Estado (integridad)</label><select id="e-estado">'
                 + '<option value="operativo"' + (c.estado === 'operativo' ? ' selected' : '') + '>Operativo</option>'
                 + '<option value="roto"' + (c.estado === 'roto' ? ' selected' : '') + '>Roto</option></select>'
@@ -2469,12 +2422,6 @@
                 + '<option value="vacio"' + (c.nivelLlenado === 'vacio' ? ' selected' : '') + '>Vacío</option>'
                 + '<option value="lleno"' + (c.nivelLlenado === 'lleno' ? ' selected' : '') + '>Lleno</option>'
                 + '<option value="desbordado"' + (c.nivelLlenado === 'desbordado' ? ' selected' : '') + '>Desbordado</option></select>'
-=======
-                + '<label>Estado</label><select id="e-estado">'
-                + '<option value="operativo"' + (c.estado === 'operativo' ? ' selected' : '') + '>Operativo</option>'
-                + '<option value="roto"' + (c.estado === 'roto' ? ' selected' : '') + '>Roto</option>'
-                + '<option value="desbordado"' + (c.estado === 'desbordado' ? ' selected' : '') + '>Desbordado</option></select>'
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
                 + '<label>Ubicación (click en el mapa para cambiarla)</label>'
                 + '<div id="modal-mapa" class="mapa"></div>'
                 + '<p class="mapa-coord" id="e-coord">Ubicación actual: ' + c.lat + ', ' + c.lng + '</p>'
@@ -2487,15 +2434,12 @@
                     direccion: document.getElementById('e-direccion').value.trim(),
                     tipoResiduo: document.getElementById('e-tipo').value,
                     estado: document.getElementById('e-estado').value,
-<<<<<<< HEAD
                     nivelLlenado: document.getElementById('e-llenado').value,
-=======
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
                     lat: modalCoord.lat, lng: modalCoord.lng,
                 };
                 try {
                     const resp = await fetch(API_GESTION + '/contenedores/modificar', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        method: 'POST', headers: cabeceras(),
                         body: JSON.stringify(datos),
                     });
                     const r = await resp.json();
@@ -2550,7 +2494,7 @@
                 };
                 try {
                     const resp = await fetch(API_RECOLECCION + '/camiones/modificar', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        method: 'POST', headers: cabeceras(),
                         body: JSON.stringify(datos),
                     });
                     const r = await resp.json();
@@ -2561,7 +2505,6 @@
         });
     }
 
-<<<<<<< HEAD
     // -------- EDITAR INSTALACIÓN --------
     function editarInstalacion(id) {
         const i = cacheInstalaciones.find(function (x) { return x.id === id; });
@@ -2607,7 +2550,7 @@
             };
             try {
                 const resp = await fetch(API_GESTION + '/instalaciones/modificar', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    method: 'POST', headers: cabeceras(),
                     body: JSON.stringify(datos),
                 });
                 const r = await resp.json();
@@ -2676,7 +2619,7 @@
                 };
                 try {
                     const resp = await fetch(API_GESTION + '/maquinaria/modificar', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        method: 'POST', headers: cabeceras(),
                         body: JSON.stringify(datos),
                     });
                     const r = await resp.json();
@@ -2687,8 +2630,6 @@
         });
     }
 
-=======
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
     // Al abrir la página, intentamos restaurar una sesión guardada
     // (para que un refresco no devuelva al login).
     restaurarSesion();

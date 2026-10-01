@@ -37,7 +37,6 @@ class RepositorioUsuarios extends RepositorioSql
             return;
         }
         $hash = password_hash('1234', PASSWORD_DEFAULT);
-<<<<<<< HEAD
         $sql = 'INSERT INTO usuario (id, nombre, email, password_hash, rol, especialidad, cuadrilla_id, instalacion_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
         // Los operarios de clasificación y vertedero nacen asignados a su instalación.
@@ -46,15 +45,6 @@ class RepositorioUsuarios extends RepositorioSql
         $this->consulta($sql, [3, 'Julián Fernández', 'clasificacion@sigeru.uy', $hash, 'operario',      'clasificacion', null, 2]);
         $this->consulta($sql, [4, 'Ana Silva',        'vertedero@sigeru.uy',     $hash, 'operario',      'vertedero',     null, 3]);
         $this->consulta($sql, [5, 'Vecino de Prueba', 'vecino@gmail.com',        $hash, 'vecino',        null,            null, null]);
-=======
-        $sql = 'INSERT INTO usuario (id, nombre, email, password_hash, rol, especialidad, cuadrilla_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?)';
-        $this->consulta($sql, [1, 'Carlos Rodríguez', 'admin@sigeru.uy',         $hash, 'administrador', null,            null]);
-        $this->consulta($sql, [2, 'Marta Pérez',      'recoleccion@sigeru.uy',   $hash, 'operario',      'recoleccion',   1]);
-        $this->consulta($sql, [3, 'Julián Fernández', 'clasificacion@sigeru.uy', $hash, 'operario',      'clasificacion', null]);
-        $this->consulta($sql, [4, 'Ana Silva',        'vertedero@sigeru.uy',     $hash, 'operario',      'vertedero',     null]);
-        $this->consulta($sql, [5, 'Vecino de Prueba', 'vecino@gmail.com',        $hash, 'vecino',        null,            null]);
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
     }
 
     /**
@@ -68,18 +58,11 @@ class RepositorioUsuarios extends RepositorioSql
         if ($f['rol'] === 'operario') {
             // El objeto guarda la cuadrilla como texto informativo (id o null).
             $cuadrilla = $f['cuadrilla_id'] !== null ? (string)$f['cuadrilla_id'] : null;
-<<<<<<< HEAD
             $inst = $f['instalacion_id'] !== null ? (int)$f['instalacion_id'] : null;
             return match ($f['especialidad'] ?? 'recoleccion') {
                 'clasificacion' => new OperarioClasificacion($id, $f['nombre'], $f['email'], $hash, $cuadrilla, $inst),
                 'vertedero'     => new OperarioVertedero($id, $f['nombre'], $f['email'], $hash, $cuadrilla, $inst),
                 default         => new OperarioRecoleccion($id, $f['nombre'], $f['email'], $hash, $cuadrilla, $inst),
-=======
-            return match ($f['especialidad'] ?? 'recoleccion') {
-                'clasificacion' => new OperarioClasificacion($id, $f['nombre'], $f['email'], $hash, $cuadrilla),
-                'vertedero'     => new OperarioVertedero($id, $f['nombre'], $f['email'], $hash, $cuadrilla),
-                default         => new OperarioRecoleccion($id, $f['nombre'], $f['email'], $hash, $cuadrilla),
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
             };
         }
         return match ($f['rol']) {
@@ -101,20 +84,12 @@ class RepositorioUsuarios extends RepositorioSql
     {
         // Un usuario nuevo nunca nace asignado a una cuadrilla: eso se
         // gestiona después desde el apartado Cuadrillas.
-<<<<<<< HEAD
         $esp  = $u instanceof Operario ? $u->getEspecialidad()  : null;
         $inst = $u instanceof Operario ? $u->getInstalacionId() : null;
         $this->consulta(
             'INSERT INTO usuario (id, nombre, email, password_hash, rol, especialidad, cuadrilla_id, instalacion_id)
              VALUES (?, ?, ?, ?, ?, ?, NULL, ?)',
             [$u->getId(), $u->getNombre(), $u->getEmail(), $u->getPasswordHash(), $u->getRol(), $esp, $inst]
-=======
-        $esp = $u instanceof Operario ? $u->getEspecialidad() : null;
-        $this->consulta(
-            'INSERT INTO usuario (id, nombre, email, password_hash, rol, especialidad, cuadrilla_id)
-             VALUES (?, ?, ?, ?, ?, ?, NULL)',
-            [$u->getId(), $u->getNombre(), $u->getEmail(), $u->getPasswordHash(), $u->getRol(), $esp]
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
         );
     }
 
@@ -126,7 +101,6 @@ class RepositorioUsuarios extends RepositorioSql
      */
     public function actualizar(Usuario $u, ?string $hashNuevo = null): bool
     {
-<<<<<<< HEAD
         $esp  = $u instanceof Operario ? $u->getEspecialidad()  : null;
         $inst = $u instanceof Operario ? $u->getInstalacionId() : null;
 
@@ -139,19 +113,6 @@ class RepositorioUsuarios extends RepositorioSql
             $stmt = $this->consulta(
                 'UPDATE usuario SET nombre = ?, email = ?, rol = ?, especialidad = ?, instalacion_id = ? WHERE id = ?',
                 [$u->getNombre(), $u->getEmail(), $u->getRol(), $esp, $inst, $u->getId()]
-=======
-        $esp = $u instanceof Operario ? $u->getEspecialidad() : null;
-
-        if ($hashNuevo !== null && $hashNuevo !== '') {
-            $stmt = $this->consulta(
-                'UPDATE usuario SET nombre = ?, email = ?, password_hash = ?, rol = ?, especialidad = ? WHERE id = ?',
-                [$u->getNombre(), $u->getEmail(), $hashNuevo, $u->getRol(), $esp, $u->getId()]
-            );
-        } else {
-            $stmt = $this->consulta(
-                'UPDATE usuario SET nombre = ?, email = ?, rol = ?, especialidad = ? WHERE id = ?',
-                [$u->getNombre(), $u->getEmail(), $u->getRol(), $esp, $u->getId()]
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
             );
         }
 
@@ -162,5 +123,22 @@ class RepositorioUsuarios extends RepositorioSql
 
         // rowCount puede ser 0 si no cambió nada; verificamos existencia real.
         return $this->fila('SELECT id FROM usuario WHERE id = ?', [$u->getId()]) !== null;
+    }
+
+    /**
+     * Genera un token de sesión nuevo para el usuario y lo guarda.
+     * random_bytes() da bytes criptográficamente seguros (no adivinables).
+     */
+    public function generarToken(int $usuarioId): string
+    {
+        $token = bin2hex(random_bytes(32));   // 64 caracteres
+        $this->consulta('UPDATE usuario SET token = ? WHERE id = ?', [$token, $usuarioId]);
+        return $token;
+    }
+
+    /** Borra el token: la sesión deja de ser válida (cerrar sesión). */
+    public function borrarToken(int $usuarioId): void
+    {
+        $this->consulta('UPDATE usuario SET token = NULL WHERE id = ?', [$usuarioId]);
     }
 }

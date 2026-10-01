@@ -32,12 +32,14 @@ class IncidenciaController extends ControladorBase
     /** Incidencias activas (las que se dibujan en el mapa). */
     public function listar(): void
     {
+        $this->exigirLogin();
         $this->responder($this->repo->activas(), 200);
     }
 
     /** Historial de incidencias resueltas. */
     public function historial(): void
     {
+        $this->exigirLogin();
         $this->responder($this->repo->historial(), 200);
     }
 
@@ -48,6 +50,7 @@ class IncidenciaController extends ControladorBase
      */
     public function crear(): void
     {
+        $this->exigirLogin();
         $datos = $this->leerJson();
         $contenedorId = (int)($datos['contenedorId'] ?? 0);
         $tipo         = $datos['tipo'] ?? 'otro';
@@ -90,6 +93,7 @@ class IncidenciaController extends ControladorBase
      */
     public function cambiarEstado(): void
     {
+        $this->exigirAdmin();
         $datos = $this->leerJson();
         $id     = (int)($datos['id'] ?? 0);
         $estado = $datos['estado'] ?? '';
@@ -110,6 +114,7 @@ class IncidenciaController extends ControladorBase
     /** POST /incidencias/asignar-cuadrilla — asigna la cuadrilla responsable. */
     public function asignarCuadrilla(): void
     {
+        $this->exigirAdmin();
         $datos = $this->leerJson();
         $id = (int)($datos['id'] ?? 0);
         $cuadrillaId = isset($datos['cuadrillaId']) && $datos['cuadrillaId'] !== '' && $datos['cuadrillaId'] !== null
@@ -127,6 +132,7 @@ class IncidenciaController extends ControladorBase
 
     public function eliminar(): void
     {
+        $this->exigirAdmin();
         $datos = $this->leerJson();
         $id = (int)($datos['id'] ?? 0);
         if ($id <= 0) {

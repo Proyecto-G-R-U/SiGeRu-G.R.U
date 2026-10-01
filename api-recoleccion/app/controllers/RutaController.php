@@ -28,12 +28,14 @@ class RutaController extends ControladorBase
 
     public function listar(): void
     {
+        $this->exigirLogin();
         $this->responder($this->repo->todos(), 200);
     }
 
     /** Rutas de una cuadrilla: lo que ve el operario de recolección. */
     public function porCuadrilla(): void
     {
+        $this->exigirLogin();
         $id = (int)($_GET['id'] ?? 0);
         if ($id <= 0) {
             $this->error('Falta el id de la cuadrilla.', 400);
@@ -43,6 +45,7 @@ class RutaController extends ControladorBase
 
     public function crear(): void
     {
+        $this->exigirAdmin();
         $datos = $this->leerJson();
         $nombre = trim($datos['nombre'] ?? '');
         $zona   = trim($datos['zona'] ?? '');
@@ -64,6 +67,7 @@ class RutaController extends ControladorBase
 
     public function modificar(): void
     {
+        $this->exigirAdmin();
         $datos = $this->leerJson();
         $id     = (int)($datos['id'] ?? 0);
         $nombre = trim($datos['nombre'] ?? '');
@@ -90,6 +94,7 @@ class RutaController extends ControladorBase
 
     public function eliminar(): void
     {
+        $this->exigirAdmin();
         $datos = $this->leerJson();
         $id = (int)($datos['id'] ?? 0);
         if ($id <= 0) {
@@ -103,6 +108,7 @@ class RutaController extends ControladorBase
 
     public function agregarContenedor(): void
     {
+        $this->exigirAdmin();
         $datos = $this->leerJson();
         $rutaId = (int)($datos['rutaId'] ?? 0);
         $contenedorId = (int)($datos['contenedorId'] ?? 0);
@@ -118,6 +124,7 @@ class RutaController extends ControladorBase
 
     public function quitarContenedor(): void
     {
+        $this->exigirAdmin();
         $datos = $this->leerJson();
         $rutaId = (int)($datos['rutaId'] ?? 0);
         $contenedorId = (int)($datos['contenedorId'] ?? 0);

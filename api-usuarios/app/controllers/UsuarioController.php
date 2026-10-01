@@ -44,10 +44,24 @@ class UsuarioController extends ControladorBase
             $this->error('Credenciales inválidas.', 401);
         }
 
+        // Sesión válida: generamos el token que autenticará sus pedidos.
+        $token = $this->repo->generarToken($usuario->getId());
+
         $this->responder([
             'mensaje' => 'Inicio de sesión correcto.',
             'usuario' => $usuario,
+            'token'   => $token,
         ], 200);
+    }
+
+    /** POST /logout — invalida el token de la sesión actual. */
+    public function logout(): void
+    {
+        $u = $this->usuarioAutenticado();
+        if ($u !== null) {
+            $this->repo->borrarToken((int)$u['id']);
+        }
+        $this->responder(['mensaje' => 'Sesión cerrada.'], 200);
     }
 
     /** POST /usuarios — registro / alta de usuario. */
@@ -58,6 +72,12 @@ class UsuarioController extends ControladorBase
         $email    = trim($datos['email'] ?? '');
         $password = $datos['password'] ?? '';
         $rol      = $datos['rol'] ?? 'vecino';
+
+        // El auto-registro de la landing solo puede crear VECINOS. Dar de alta
+        // administradores u operarios es una acción reservada al administrador.
+        if ($rol !== 'vecino') {
+            $this->exigirAdmin();
+        }
 
         if ($nombre === '' || $email === '' || $password === '') {
             $this->error('Nombre, email y contraseña son obligatorios.', 400);
@@ -74,12 +94,8 @@ class UsuarioController extends ControladorBase
             'operario'      => $this->crearOperario(
                 $id, $nombre, $email, $hash,
                 $datos['especialidad'] ?? 'recoleccion',
-<<<<<<< HEAD
                 $datos['cuadrilla'] ?? null,
                 isset($datos['instalacionId']) && $datos['instalacionId'] !== '' ? (int)$datos['instalacionId'] : null
-=======
-                $datos['cuadrilla'] ?? null
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
             ),
             default         => new Vecino($id, $nombre, $email, $hash),
         };
@@ -95,6 +111,7 @@ class UsuarioController extends ControladorBase
     /** GET /usuarios — listado completo. */
     public function listar(): void
     {
+        $this->exigirAdmin();
         $this->responder($this->repo->todos(), 200);
     }
 
@@ -109,6 +126,7 @@ class UsuarioController extends ControladorBase
      */
     public function eliminar(): void
     {
+        $this->exigirAdmin();
         $datos = $this->leerJson();
         $id         = (int)($datos['id'] ?? 0);
         $adminEmail = trim($datos['adminEmail'] ?? '');
@@ -141,21 +159,12 @@ class UsuarioController extends ControladorBase
      * Crea la subclase de Operario correcta según la especialidad.
      * Centraliza la decisión en un solo lugar (fábrica simple).
      */
-<<<<<<< HEAD
     private function crearOperario(int $id, string $nombre, string $email, string $hash, string $especialidad, ?string $cuadrilla, ?int $instalacionId = null): Operario
     {
         return match ($especialidad) {
             'clasificacion' => new OperarioClasificacion($id, $nombre, $email, $hash, $cuadrilla, $instalacionId),
             'vertedero'     => new OperarioVertedero($id, $nombre, $email, $hash, $cuadrilla, $instalacionId),
             default         => new OperarioRecoleccion($id, $nombre, $email, $hash, $cuadrilla, $instalacionId),
-=======
-    private function crearOperario(int $id, string $nombre, string $email, string $hash, string $especialidad, ?string $cuadrilla): Operario
-    {
-        return match ($especialidad) {
-            'clasificacion' => new OperarioClasificacion($id, $nombre, $email, $hash, $cuadrilla),
-            'vertedero'     => new OperarioVertedero($id, $nombre, $email, $hash, $cuadrilla),
-            default         => new OperarioRecoleccion($id, $nombre, $email, $hash, $cuadrilla),
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
         };
     }
 
@@ -166,6 +175,7 @@ class UsuarioController extends ControladorBase
      */
     public function modificar(): void
     {
+        $this->exigirAdmin();
         $datos = $this->leerJson();
         $id       = (int)($datos['id'] ?? 0);
         $nombre   = trim($datos['nombre'] ?? '');
@@ -202,12 +212,8 @@ class UsuarioController extends ControladorBase
             'operario'      => $this->crearOperario(
                 $id, $nombre, $email, $hashParaObjeto,
                 $datos['especialidad'] ?? 'recoleccion',
-<<<<<<< HEAD
                 $datos['cuadrilla'] ?? null,
                 isset($datos['instalacionId']) && $datos['instalacionId'] !== '' ? (int)$datos['instalacionId'] : null
-=======
-                $datos['cuadrilla'] ?? null
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
             ),
             default         => new Vecino($id, $nombre, $email, $hashParaObjeto),
         };

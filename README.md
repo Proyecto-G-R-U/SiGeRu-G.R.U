@@ -177,7 +177,6 @@ Para volver a los datos de prueba: reimportar `base.sql` en phpMyAdmin
 ### Credenciales de conexión
 XAMPP por defecto: host `localhost`, usuario `root`, sin contraseña.
 Se cambian en `app/models/RepositorioSql.php` de cada API.
-<<<<<<< HEAD
 
 ## INSTALACIONES E INVENTARIO (2da entrega)
 
@@ -261,7 +260,7 @@ sección Contenedores.
   `POST /incidencias/eliminar` (admin)
 
 ### IMPORTANTE: reimportar la base
-Se agregó la tabla `incidencia`, así que hay que volver a importar
+Se agregó la columna `usuario.token`, así que hay que volver a importar
 `base-de-datos/base.sql` en phpMyAdmin.
 
 ### Ubicación de las instalaciones en el mapa
@@ -303,5 +302,35 @@ cada instalación se muestra en su propio panel, no como guía educativa.
 ### IMPORTANTE: reimportar la base
 Cambió la tabla `contenedor` (nueva columna `nivel_llenado` y el ENUM de
 `estado`), así que hay que volver a importar `base-de-datos/base.sql`.
-=======
->>>>>>> 900ec4a2af4c3bd6139702994975f1671d87a12c
+
+## SEGURIDAD POR ROLES (2da entrega)
+
+### Autenticación por token
+Antes la restricción por rol vivía solo en el frontend (el menú), pero
+cualquiera que conociera una URL podía llamar a la API. Ahora:
+
+1. Al iniciar sesión, la API genera un **token** aleatorio de 64 caracteres
+   (`random_bytes`) y lo guarda en `usuario.token`.
+2. El frontend lo guarda en sessionStorage y lo envía en cada pedido con la
+   cabecera `Authorization: Bearer <token>`.
+3. Cada endpoint protegido resuelve el token contra la base y comprueba el
+   rol antes de ejecutar nada.
+4. Al cerrar sesión, `POST /logout` borra el token: deja de ser válido del
+   lado del servidor, no solo en el navegador.
+
+Respuestas: **401** si no hay sesión, **403** si la hay pero sin permiso.
+El frontend detecta el 401 y devuelve al login automáticamente.
+
+Criterio aplicado a los endpoints:
+- **Públicos:** login y el auto-registro de vecinos.
+- **Con sesión (cualquier rol):** consultar contenedores, instalaciones,
+  inventario, incidencias, camiones, flotas y rutas; y reportar incidencias.
+- **Solo administrador:** todas las altas, bajas y modificaciones, la
+  gestión de incidencias y de cuadrillas.
+
+Nota: el `.htaccess` incluye una regla que conserva la cabecera
+`Authorization`, porque Apache la descarta al reescribir la URL.
+
+### IMPORTANTE: reimportar la base
+Se agregó la columna `usuario.token`, así que hay que volver a importar
+`base-de-datos/base.sql` en phpMyAdmin.

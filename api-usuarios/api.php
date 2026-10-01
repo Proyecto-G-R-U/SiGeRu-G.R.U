@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 // ---- Cargamos las clases que usamos ----
 require __DIR__ . '/app/models/RepositorioSql.php';
+require __DIR__ . '/app/models/Autenticacion.php';
 require __DIR__ . '/app/models/Usuario.php';
 require __DIR__ . '/app/models/Administrador.php';
 require __DIR__ . '/app/models/Operario.php';
@@ -65,6 +66,10 @@ $cuadrillaCtrl = new CuadrillaController(new RepositorioCuadrillas(), $repoUsuar
 switch ($metodo . ' ' . $ruta) {
     case 'POST /login':
         $controller->login();
+        break;
+
+    case 'POST /logout':
+        $controller->logout();
         break;
 
     case 'POST /usuarios':
