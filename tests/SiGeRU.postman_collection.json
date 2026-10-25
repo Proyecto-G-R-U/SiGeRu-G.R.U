@@ -1,0 +1,2795 @@
+{
+  "info": {
+    "_postman_id": "e505e569-166a-45cb-bb83-71e07dfa3241",
+    "name": "SiGeRU — Pruebas de API",
+    "description": "Pruebas automatizadas de las tres APIs REST de SiGeRU.\n\nCÓMO USARLA\n1. Arrancar Apache y MySQL en XAMPP, e importar base-de-datos/base.sql.\n2. Importar esta colección en Postman (Import → File).\n3. Verificar la variable baseUrl (por defecto http://localhost/sigeru).\n4. Ejecutar con el Collection Runner, EN ORDEN: las carpetas se apoyan\n   unas en otras (la 1 obtiene los tokens que usan las demás).\n\nQUÉ CUBRE\n· Autenticación por token y validación de credenciales.\n· Separación de endpoints por rol: 401 sin sesión, 403 sin permiso.\n· ABM completo de usuarios, contenedores e instalaciones.\n· Ciclo de vida de una incidencia, de reporte a historial.\n· Reglas de exclusividad (operario↔cuadrilla, cuadrilla↔camión).\n· Integridad referencial (ON DELETE SET NULL y CASCADE).\n\nLas pruebas limpian lo que crean: al terminar, la base queda igual.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Autenticación",
+      "item": [
+        {
+          "name": "Login administrador (correcto)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json();",
+                  "pm.test('Devuelve un token', () => pm.expect(d.token).to.be.a('string').and.not.empty);",
+                  "pm.test('El token tiene 64 caracteres', () => pm.expect(d.token.length).to.eql(64));",
+                  "pm.test('Devuelve los datos del usuario', () => pm.expect(d.usuario).to.be.an('object'));",
+                  "pm.test('El rol es administrador', () => pm.expect(d.usuario.rol).to.eql('administrador'));",
+                  "pm.test('NUNCA devuelve el hash de la contraseña', () => {",
+                  "    pm.expect(d.usuario.passwordHash).to.be.undefined;",
+                  "    pm.expect(d.usuario.password_hash).to.be.undefined;",
+                  "});",
+                  "pm.collectionVariables.set('tokenAdmin', d.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "login"
+              ]
+            },
+            "description": "Inicia sesión como administrador y guarda su token para el resto de las pruebas.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@sigeru.uy\",\n  \"password\": \"1234\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login vecino (correcto)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json();",
+                  "pm.test('El rol es vecino', () => pm.expect(d.usuario.rol).to.eql('vecino'));",
+                  "pm.collectionVariables.set('tokenVecino', d.token);",
+                  "pm.collectionVariables.set('idVecino', d.usuario.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"vecino@gmail.com\",\n  \"password\": \"1234\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login operario de recolección",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json();",
+                  "pm.test('El rol es operario', () => pm.expect(d.usuario.rol).to.eql('operario'));",
+                  "pm.test('La especialidad es recolección', () => pm.expect(d.usuario.especialidad).to.eql('recoleccion'));",
+                  "pm.collectionVariables.set('tokenOperario', d.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"recoleccion@sigeru.uy\",\n  \"password\": \"1234\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login con contraseña incorrecta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Rechaza con 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Explica el error', () => pm.expect(pm.response.json().error).to.be.a('string'));",
+                  "pm.test('NO devuelve token', () => pm.expect(pm.response.json().token).to.be.undefined);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@sigeru.uy\",\n  \"password\": \"clave-incorrecta\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login con email inexistente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Rechaza con 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"noexiste@sigeru.uy\",\n  \"password\": \"1234\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login sin datos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Rechaza con 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"\",\n  \"password\": \"\"\n}"
+            }
+          }
+        }
+      ],
+      "description": "Prueba el inicio de sesión y la generación de tokens."
+    },
+    {
+      "name": "2. Seguridad por roles",
+      "item": [
+        {
+          "name": "SIN token: listar usuarios → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Rechaza sin sesión (401)', () => pm.response.to.have.status(401));",
+                  "pm.test('No filtra datos', () => pm.expect(pm.response.json().error).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/usuarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "usuarios"
+              ]
+            },
+            "description": "Sin cabecera Authorization la API no debe responder datos."
+          }
+        },
+        {
+          "name": "SIN token: crear contenedor → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Rechaza sin sesión (401)', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/contenedores",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "contenedores"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"HACK-001\",\n  \"direccion\": \"x\",\n  \"lat\": -34.9,\n  \"lng\": -56.1\n}"
+            }
+          }
+        },
+        {
+          "name": "Token INVÁLIDO: listar usuarios → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Un token falso no sirve (401)', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenFalso}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/usuarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "usuarios"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "VECINO: listar usuarios → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Prohibido para vecinos (403)', () => pm.response.to.have.status(403));",
+                  "pm.test('Explica que no tiene permiso', () => pm.expect(pm.response.json().error).to.include('permiso'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenVecino}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/usuarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "usuarios"
+              ]
+            },
+            "description": "El vecino tiene sesión válida pero no el rol necesario."
+          }
+        },
+        {
+          "name": "VECINO: crear contenedor → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Prohibido para vecinos (403)', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenVecino}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/contenedores",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "contenedores"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"VEC-001\",\n  \"direccion\": \"x\",\n  \"lat\": -34.9,\n  \"lng\": -56.1\n}"
+            }
+          }
+        },
+        {
+          "name": "VECINO: eliminar usuario → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Prohibido para vecinos (403)', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenVecino}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/usuarios/eliminar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "usuarios",
+                "eliminar"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": 1\n}"
+            }
+          }
+        },
+        {
+          "name": "OPERARIO: crear camión → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Prohibido para operarios (403)', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenOperario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-recoleccion/camiones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-recoleccion",
+                "camiones"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patente\": \"OPE-001\",\n  \"modelo\": \"x\"\n}"
+            }
+          }
+        },
+        {
+          "name": "VECINO: ver contenedores → 200 (permitido)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('El vecino SÍ puede consultar contenedores', () => pm.response.to.have.status(200));",
+                  "pm.test('Devuelve una lista', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenVecino}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/contenedores",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "contenedores"
+              ]
+            },
+            "description": "Los vecinos necesitan ver los contenedores en el mapa."
+          }
+        },
+        {
+          "name": "ADMIN: listar usuarios → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('El admin SÍ puede (200)', () => pm.response.to.have.status(200));",
+                  "pm.test('Devuelve una lista', () => pm.expect(pm.response.json()).to.be.an('array'));",
+                  "pm.test('Ningún usuario expone su hash', () => {",
+                  "    pm.response.json().forEach(u => pm.expect(u.passwordHash).to.be.undefined);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/usuarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "usuarios"
+              ]
+            },
+            "description": ""
+          }
+        }
+      ],
+      "description": "Comprueba la separación de endpoints por rol: 401 sin sesión, 403 sin permiso."
+    },
+    {
+      "name": "3. ABM de usuarios",
+      "item": [
+        {
+          "name": "Crear operario de clasificación",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 201 (creado)', () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json();",
+                  "pm.test('Devuelve el usuario creado', () => pm.expect(d.usuario).to.be.an('object'));",
+                  "pm.test('Con el rol pedido', () => pm.expect(d.usuario.rol).to.eql('operario'));",
+                  "pm.test('Con la especialidad pedida', () => pm.expect(d.usuario.especialidad).to.eql('clasificacion'));",
+                  "pm.collectionVariables.set('idUsuarioTest', d.usuario.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/usuarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "usuarios"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Test Operario\",\n  \"email\": \"test.operario@sigeru.uy\",\n  \"password\": \"1234\",\n  \"rol\": \"operario\",\n  \"especialidad\": \"clasificacion\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Crear con email repetido → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Rechaza el email duplicado', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/usuarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "usuarios"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Otro\",\n  \"email\": \"test.operario@sigeru.uy\",\n  \"password\": \"1234\",\n  \"rol\": \"vecino\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Crear sin nombre → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Valida los campos obligatorios', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/usuarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "usuarios"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"\",\n  \"email\": \"x@x.uy\",\n  \"password\": \"1234\",\n  \"rol\": \"vecino\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Listar usuarios",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "const lista = pm.response.json();",
+                  "pm.test('El usuario recién creado aparece', () => {",
+                  "    const id = Number(pm.collectionVariables.get('idUsuarioTest'));",
+                  "    pm.expect(lista.some(u => u.id === id)).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/usuarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "usuarios"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Modificar el operario",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('El nombre cambió', () => pm.expect(pm.response.json().usuario.nombre).to.eql('Test Operario Editado'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/usuarios/modificar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "usuarios",
+                "modificar"
+              ]
+            },
+            "description": "Sin enviar contraseña: debe conservar la que ya tenía.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{idUsuarioTest}}\",\n  \"nombre\": \"Test Operario Editado\",\n  \"email\": \"test.operario@sigeru.uy\",\n  \"rol\": \"operario\",\n  \"especialidad\": \"vertedero\"\n}"
+            }
+          }
+        },
+        {
+          "name": "El operario modificado puede seguir entrando",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('La contraseña se conservó al editar', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "login"
+              ]
+            },
+            "description": "Comprueba que modificar un usuario sin tocar la contraseña no la borra.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test.operario@sigeru.uy\",\n  \"password\": \"1234\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Eliminar el operario de prueba",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/usuarios/eliminar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "usuarios",
+                "eliminar"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{idUsuarioTest}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Eliminar un id inexistente → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Avisa que no existe (404)', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/usuarios/eliminar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "usuarios",
+                "eliminar"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": 99999\n}"
+            }
+          }
+        }
+      ],
+      "description": "Alta, baja, modificación y consulta de usuarios internos (requerimiento 3.1.1.1.1)."
+    },
+    {
+      "name": "4. ABM de contenedores",
+      "item": [
+        {
+          "name": "Crear contenedor",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 201', () => pm.response.to.have.status(201));",
+                  "const c = pm.response.json().contenedor;",
+                  "pm.test('Guarda las coordenadas', () => {",
+                  "    pm.expect(Number(c.lat)).to.be.closeTo(-34.9055, 0.001);",
+                  "    pm.expect(Number(c.lng)).to.be.closeTo(-56.1655, 0.001);",
+                  "});",
+                  "pm.test('Integridad y llenado son independientes', () => {",
+                  "    pm.expect(c.estado).to.eql('operativo');",
+                  "    pm.expect(c.nivelLlenado).to.eql('desbordado');",
+                  "});",
+                  "pm.collectionVariables.set('idContenedorTest', c.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/contenedores",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "contenedores"
+              ]
+            },
+            "description": "Un contenedor puede estar sano (operativo) y a la vez desbordado.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"TEST-001\",\n  \"direccion\": \"Calle de Prueba 123\",\n  \"tipoResiduo\": \"reciclable\",\n  \"estado\": \"operativo\",\n  \"nivelLlenado\": \"desbordado\",\n  \"lat\": -34.9055,\n  \"lng\": -56.1655\n}"
+            }
+          }
+        },
+        {
+          "name": "Crear sin ubicación → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Exige marcar la ubicación', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/contenedores",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "contenedores"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"TEST-002\",\n  \"direccion\": \"Sin mapa\",\n  \"tipoResiduo\": \"mezclado\",\n  \"estado\": \"operativo\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Crear con código repetido → 500",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Rechaza el código duplicado', () => pm.expect(pm.response.code).to.be.oneOf([400, 409, 500]));",
+                  "pm.test('Da un mensaje entendible', () => pm.expect(pm.response.json().error).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/contenedores",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "contenedores"
+              ]
+            },
+            "description": "La columna codigo es UNIQUE: el error de MySQL se traduce a un mensaje claro.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"TEST-001\",\n  \"direccion\": \"Otra\",\n  \"tipoResiduo\": \"mezclado\",\n  \"estado\": \"operativo\",\n  \"lat\": -34.9,\n  \"lng\": -56.1\n}"
+            }
+          }
+        },
+        {
+          "name": "Listar contenedores",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Devuelve una lista', () => pm.expect(pm.response.json()).to.be.an('array'));",
+                  "pm.test('Cada contenedor trae estado y llenado', () => {",
+                  "    pm.response.json().forEach(c => {",
+                  "        pm.expect(c).to.have.property('estado');",
+                  "        pm.expect(c).to.have.property('nivelLlenado');",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/contenedores",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "contenedores"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Modificar contenedor",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "const c = pm.response.json().contenedor;",
+                  "pm.test('Ahora está roto', () => pm.expect(c.estado).to.eql('roto'));",
+                  "pm.test('Y vacío', () => pm.expect(c.nivelLlenado).to.eql('vacio'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/contenedores/modificar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "contenedores",
+                "modificar"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{idContenedorTest}}\",\n  \"codigo\": \"TEST-001\",\n  \"direccion\": \"Calle de Prueba 123\",\n  \"tipoResiduo\": \"reciclable\",\n  \"estado\": \"roto\",\n  \"nivelLlenado\": \"vacio\",\n  \"lat\": -34.9055,\n  \"lng\": -56.1655\n}"
+            }
+          }
+        },
+        {
+          "name": "Eliminar contenedor",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/contenedores/eliminar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "contenedores",
+                "eliminar"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{idContenedorTest}}\"\n}"
+            }
+          }
+        }
+      ],
+      "description": "ABM de contenedores con ubicación geográfica (requerimientos 3.1.1.2.1 a 3.1.1.2.3)."
+    },
+    {
+      "name": "5. Instalaciones e inventario",
+      "item": [
+        {
+          "name": "Crear planta de clasificación",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 201', () => pm.response.to.have.status(201));",
+                  "const i = pm.response.json().instalacion;",
+                  "pm.test('La subclase correcta define el tipo', () => pm.expect(i.tipo).to.eql('clasificacion'));",
+                  "pm.test('Devuelve el nombre legible del tipo', () => pm.expect(i.tipoLegible).to.eql('Planta de clasificación'));",
+                  "pm.test('Guarda la capacidad máxima', () => pm.expect(i.capacidadMaxima).to.eql(250));",
+                  "pm.collectionVariables.set('idInstalacionTest', i.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/instalaciones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "instalaciones"
+              ]
+            },
+            "description": "La jerarquía Instalacion→subclases se rearma según la columna tipo.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Planta de Prueba\",\n  \"direccion\": \"Ruta 8 km 20\",\n  \"tipo\": \"clasificacion\",\n  \"capacidadMaxima\": 250,\n  \"tipoResiduo\": \"reciclable\",\n  \"estado\": \"operativa\",\n  \"lat\": -34.84,\n  \"lng\": -56.1\n}"
+            }
+          }
+        },
+        {
+          "name": "Crear con capacidad inválida → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Exige capacidad mayor a cero', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/instalaciones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "instalaciones"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Mala\",\n  \"direccion\": \"x\",\n  \"tipo\": \"acopio\",\n  \"capacidadMaxima\": 0,\n  \"lat\": -34.9,\n  \"lng\": -56.1\n}"
+            }
+          }
+        },
+        {
+          "name": "Listar instalaciones",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "const lista = pm.response.json();",
+                  "pm.test('Hay instalaciones de los tres tipos', () => {",
+                  "    const tipos = new Set(lista.map(i => i.tipo));",
+                  "    pm.expect(tipos.has('acopio') || tipos.has('clasificacion') || tipos.has('vertedero')).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/instalaciones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "instalaciones"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Agregar maquinaria a la planta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 201', () => pm.response.to.have.status(201));",
+                  "const m = pm.response.json().maquinaria;",
+                  "pm.test('Queda asociada a la instalación', () => {",
+                  "    pm.expect(String(m.instalacionId)).to.eql(String(pm.collectionVariables.get('idInstalacionTest')));",
+                  "});",
+                  "pm.collectionVariables.set('idMaquinariaTest', m.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/maquinaria",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "maquinaria"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Cinta de prueba\",\n  \"categoria\": \"maquinaria\",\n  \"estado\": \"operativa\",\n  \"cantidad\": 2,\n  \"instalacionId\": \"{{idInstalacionTest}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Maquinaria en instalación inexistente → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Valida que la instalación exista', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/maquinaria",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "maquinaria"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Fantasma\",\n  \"categoria\": \"maquinaria\",\n  \"estado\": \"operativa\",\n  \"cantidad\": 1,\n  \"instalacionId\": 99999\n}"
+            }
+          }
+        },
+        {
+          "name": "Listar inventario",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('El ítem creado aparece', () => {",
+                  "    const id = Number(pm.collectionVariables.get('idMaquinariaTest'));",
+                  "    pm.expect(pm.response.json().some(m => m.id === id)).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/maquinaria",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "maquinaria"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Eliminar la instalación (el inventario queda libre)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/instalaciones/eliminar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "instalaciones",
+                "eliminar"
+              ]
+            },
+            "description": "La FK ON DELETE SET NULL debe dejar la maquinaria sin instalación, no borrarla.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{idInstalacionTest}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "La maquinaria sobrevive sin instalación",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('El ítem sigue existiendo', () => {",
+                  "    const id = Number(pm.collectionVariables.get('idMaquinariaTest'));",
+                  "    const m = pm.response.json().find(x => x.id === id);",
+                  "    pm.expect(m, 'la maquinaria no debe borrarse').to.not.be.undefined;",
+                  "    pm.test('Y quedó sin instalación asignada', () => pm.expect(m.instalacionId).to.be.null);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/maquinaria",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "maquinaria"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Limpiar: eliminar la maquinaria de prueba",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/maquinaria/eliminar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "maquinaria",
+                "eliminar"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{idMaquinariaTest}}\"\n}"
+            }
+          }
+        }
+      ],
+      "description": "Centros de acopio, plantas y vertederos con su inventario (requerimientos 3.1.1.2.6 y 3.1.1.2.7)."
+    },
+    {
+      "name": "6. Ciclo de vida de una incidencia",
+      "item": [
+        {
+          "name": "Preparar: crear un contenedor",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Contenedor de prueba creado', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('idContIncidencia', pm.response.json().contenedor.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/contenedores",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "contenedores"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"INC-TEST\",\n  \"direccion\": \"Av. de Prueba 900\",\n  \"tipoResiduo\": \"mezclado\",\n  \"estado\": \"operativo\",\n  \"nivelLlenado\": \"desbordado\",\n  \"lat\": -34.9,\n  \"lng\": -56.16\n}"
+            }
+          }
+        },
+        {
+          "name": "El VECINO reporta un desborde",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Cualquier usuario puede reportar (201)', () => pm.response.to.have.status(201));",
+                  "pm.test('Agradece el reporte', () => pm.expect(pm.response.json().mensaje).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenVecino}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/incidencias",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "incidencias"
+              ]
+            },
+            "description": "Requerimiento 3.1.3.4: los vecinos emiten alertas sobre contenedores.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contenedorId\": \"{{idContIncidencia}}\",\n  \"tipo\": \"desborde\",\n  \"gravedad\": \"alta\",\n  \"descripcion\": \"Desbordado hace dos días, hay bolsas en la vereda.\",\n  \"reportadoPor\": \"{{idVecino}}\",\n  \"reportadoPorNombre\": \"Vecino de Prueba\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Reportar sin descripción → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Exige una descripción', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenVecino}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/incidencias",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "incidencias"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contenedorId\": \"{{idContIncidencia}}\",\n  \"tipo\": \"rotura\",\n  \"gravedad\": \"baja\",\n  \"descripcion\": \"\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Reportar sobre un contenedor inexistente → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Valida que el contenedor exista', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenVecino}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/incidencias",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "incidencias"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contenedorId\": 99999,\n  \"tipo\": \"rotura\",\n  \"gravedad\": \"baja\",\n  \"descripcion\": \"x\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Aparece entre las incidencias activas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "const cid = Number(pm.collectionVariables.get('idContIncidencia'));",
+                  "const inc = pm.response.json().find(i => i.contenedorId === cid);",
+                  "pm.test('La incidencia está en la lista', () => pm.expect(inc).to.not.be.undefined);",
+                  "pm.test('Nace en estado abierta', () => pm.expect(inc.estado).to.eql('abierta'));",
+                  "pm.test('Nace sin cuadrilla responsable', () => pm.expect(inc.cuadrillaId).to.be.null);",
+                  "pm.test('Conserva quién la reportó', () => pm.expect(inc.reportadoPorNombre).to.be.a('string'));",
+                  "pm.collectionVariables.set('idIncidenciaTest', inc.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/incidencias",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "incidencias"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "VECINO intenta gestionarla → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Solo el admin gestiona incidencias', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenVecino}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/incidencias/estado",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "incidencias",
+                "estado"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{idIncidenciaTest}}\",\n  \"estado\": \"resuelta\"\n}"
+            }
+          }
+        },
+        {
+          "name": "ADMIN asigna la cuadrilla responsable",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/incidencias/asignar-cuadrilla",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "incidencias",
+                "asignar-cuadrilla"
+              ]
+            },
+            "description": "Requerimiento 3.1.1.3.3.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{idIncidenciaTest}}\",\n  \"cuadrillaId\": 1\n}"
+            }
+          }
+        },
+        {
+          "name": "ADMIN la pasa a 'en curso'",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/incidencias/estado",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "incidencias",
+                "estado"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{idIncidenciaTest}}\",\n  \"estado\": \"en_curso\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Sigue activa y con cuadrilla asignada",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = Number(pm.collectionVariables.get('idIncidenciaTest'));",
+                  "const inc = pm.response.json().find(i => i.id === id);",
+                  "pm.test('Sigue en la lista de activas', () => pm.expect(inc).to.not.be.undefined);",
+                  "pm.test('Ahora está en curso', () => pm.expect(inc.estado).to.eql('en_curso'));",
+                  "pm.test('Tiene cuadrilla responsable', () => pm.expect(inc.cuadrillaId).to.eql(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/incidencias",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "incidencias"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Estado inválido → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Solo acepta estados válidos', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/incidencias/estado",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "incidencias",
+                "estado"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{idIncidenciaTest}}\",\n  \"estado\": \"inventado\"\n}"
+            }
+          }
+        },
+        {
+          "name": "ADMIN la RESUELVE",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/incidencias/estado",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "incidencias",
+                "estado"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{idIncidenciaTest}}\",\n  \"estado\": \"resuelta\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Ya NO aparece entre las activas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = Number(pm.collectionVariables.get('idIncidenciaTest'));",
+                  "pm.test('Salió del mapa activo', () => {",
+                  "    pm.expect(pm.response.json().some(i => i.id === id)).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/incidencias",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "incidencias"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Y SÍ aparece en el historial",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "const id = Number(pm.collectionVariables.get('idIncidenciaTest'));",
+                  "const inc = pm.response.json().find(i => i.id === id);",
+                  "pm.test('Está en el historial', () => pm.expect(inc).to.not.be.undefined);",
+                  "pm.test('Quedó marcada como resuelta', () => pm.expect(inc.estado).to.eql('resuelta'));",
+                  "pm.test('Se selló la fecha de resolución', () => pm.expect(inc.fechaResolucion).to.not.be.null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/incidencias/historial",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "incidencias",
+                "historial"
+              ]
+            },
+            "description": "Requerimiento 3.1.1.3.4: historial de incidencias."
+          }
+        },
+        {
+          "name": "Limpiar: borrar el contenedor (arrastra su incidencia)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/contenedores/eliminar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "contenedores",
+                "eliminar"
+              ]
+            },
+            "description": "La FK ON DELETE CASCADE elimina también sus incidencias.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{idContIncidencia}}\"\n}"
+            }
+          }
+        }
+      ],
+      "description": "Reportar → asignar cuadrilla → en curso → resolver → historial (requerimientos 3.1.1.3.x)."
+    },
+    {
+      "name": "7. Flota, cuadrillas y rutas",
+      "item": [
+        {
+          "name": "Listar flotas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Devuelve una lista', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-recoleccion/flotas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-recoleccion",
+                "flotas"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Crear camión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 201', () => pm.response.to.have.status(201));",
+                  "const c = pm.response.json().camion;",
+                  "pm.test('Queda en la flota indicada', () => pm.expect(c.flotaId).to.eql(1));",
+                  "pm.collectionVariables.set('idCamionTest', c.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-recoleccion/camiones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-recoleccion",
+                "camiones"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patente\": \"TST 9999\",\n  \"modelo\": \"Camión de Prueba\",\n  \"estado\": \"operativo\",\n  \"disponibilidad\": \"disponible\",\n  \"flotaId\": 1\n}"
+            }
+          }
+        },
+        {
+          "name": "Asignar cuadrilla al camión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('El camión quedó con la cuadrilla', () => {",
+                  "    pm.expect(pm.response.json().camion.cuadrillaId).to.eql(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-recoleccion/camiones/asignar-cuadrilla",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-recoleccion",
+                "camiones",
+                "asignar-cuadrilla"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{idCamionTest}}\",\n  \"cuadrillaId\": 1\n}"
+            }
+          }
+        },
+        {
+          "name": "EXCLUSIVIDAD: la cuadrilla queda en un solo camión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "const conCuadrilla1 = pm.response.json().filter(c => c.cuadrillaId === 1);",
+                  "pm.test('Una cuadrilla no puede estar en dos camiones', () => {",
+                  "    pm.expect(conCuadrilla1.length).to.eql(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-recoleccion/camiones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-recoleccion",
+                "camiones"
+              ]
+            },
+            "description": "Al asignarla al camión nuevo, se la quitó automáticamente al que la tenía."
+          }
+        },
+        {
+          "name": "Listar cuadrillas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "const lista = pm.response.json();",
+                  "pm.test('Cada cuadrilla trae su lista de operarios', () => {",
+                  "    lista.forEach(c => pm.expect(c.operarios).to.be.an('array'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/cuadrillas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "cuadrillas"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "EXCLUSIVIDAD: un operario en una sola cuadrilla",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const lista = pm.response.json();",
+                  "const todos = [];",
+                  "lista.forEach(c => (c.operarios || []).forEach(o => todos.push(o)));",
+                  "pm.test('Ningún operario aparece en dos cuadrillas', () => {",
+                  "    pm.expect(todos.length).to.eql(new Set(todos).size);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/cuadrillas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "cuadrillas"
+              ]
+            },
+            "description": "Garantizado por diseño: la relación vive en usuario.cuadrilla_id."
+          }
+        },
+        {
+          "name": "Listar rutas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Devuelve una lista', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-recoleccion/rutas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-recoleccion",
+                "rutas"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "El OPERARIO consulta la ruta de su cuadrilla",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Devuelve las rutas de esa cuadrilla', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenOperario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-recoleccion/rutas/cuadrilla/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-recoleccion",
+                "rutas",
+                "cuadrilla",
+                "1"
+              ]
+            },
+            "description": "Requerimiento 3.1.2.1.1: las cuadrillas ven sus rutas asignadas."
+          }
+        },
+        {
+          "name": "Limpiar: eliminar el camión de prueba",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-recoleccion/camiones/eliminar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-recoleccion",
+                "camiones",
+                "eliminar"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{idCamionTest}}\"\n}"
+            }
+          }
+        }
+      ],
+      "description": "Camiones, flotas, cuadrillas y rutas, con sus reglas de exclusividad."
+    },
+    {
+      "name": "8. Cierre de sesión",
+      "item": [
+        {
+          "name": "Cerrar sesión del vecino",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenVecino}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "logout"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "El token del vecino ya no sirve → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('El token se invalidó en el servidor', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenVecino}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-gestion/contenedores",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-gestion",
+                "contenedores"
+              ]
+            },
+            "description": "Cerrar sesión borra el token de la base: no alcanza con limpiar el navegador."
+          }
+        },
+        {
+          "name": "Cerrar sesión del operario",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenOperario}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "logout"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "Cerrar sesión del administrador",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-usuarios/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-usuarios",
+                "logout"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        }
+      ],
+      "description": "Comprueba que cerrar sesión invalida el token del lado del servidor."
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost/sigeru",
+      "type": "string"
+    },
+    {
+      "key": "tokenAdmin",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tokenVecino",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tokenOperario",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tokenFalso",
+      "value": "token-invalido-de-prueba-123",
+      "type": "string"
+    },
+    {
+      "key": "idVecino",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "idUsuarioTest",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "idContenedorTest",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "idInstalacionTest",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "idMaquinariaTest",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "idContIncidencia",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "idIncidenciaTest",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "idCamionTest",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

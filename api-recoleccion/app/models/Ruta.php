@@ -7,9 +7,10 @@ namespace App\Models;
  * Ruta de recolección: recorrido que la administración arma y asigna a una
  * cuadrilla (requerimiento 3.1.2.1.1 y "rutas de recolección" de la letra).
  *
- * Una ruta tiene día y turno, una cuadrilla responsable, y la lista ordenada
- * de contenedores que recorre. Esa lista vive en la tabla intermedia
- * ruta_contenedor; acá se expone como un array de ids.
+ * Una ruta tiene día y turno, una cuadrilla responsable, la lista ordenada
+ * de contenedores que recorre y la instalación donde el camión descarga al
+ * terminar (destino final). La lista de paradas vive en la tabla intermedia
+ * ruta_contenedor; acá se expone como un array de ids en orden.
  */
 class Ruta implements \JsonSerializable
 {
@@ -19,6 +20,7 @@ class Ruta implements \JsonSerializable
     private string $diaSemana;
     private string $turno;
     private ?int $cuadrillaId;
+    private ?int $instalacionId;   // destino final donde descarga
     /** @var int[] ids de contenedores, en el orden del recorrido */
     private array $contenedores;
 
@@ -29,7 +31,8 @@ class Ruta implements \JsonSerializable
         string $diaSemana = 'lunes',
         string $turno = 'matutino',
         ?int $cuadrillaId = null,
-        array $contenedores = []
+        array $contenedores = [],
+        ?int $instalacionId = null
     ) {
         $this->id = $id;
         $this->nombre = $nombre;
@@ -38,6 +41,7 @@ class Ruta implements \JsonSerializable
         $this->turno = $turno;
         $this->cuadrillaId = $cuadrillaId;
         $this->contenedores = $contenedores;
+        $this->instalacionId = $instalacionId;
     }
 
     public function getId(): int             { return $this->id; }
@@ -47,6 +51,7 @@ class Ruta implements \JsonSerializable
     public function getTurno(): string       { return $this->turno; }
     public function getCuadrillaId(): ?int   { return $this->cuadrillaId; }
     public function getContenedores(): array { return $this->contenedores; }
+    public function getInstalacionId(): ?int { return $this->instalacionId; }
 
     public function setNombre(string $n): void       { $this->nombre = $n; }
     public function setZona(?string $z): void        { $this->zona = $z; }
@@ -54,6 +59,7 @@ class Ruta implements \JsonSerializable
     public function setTurno(string $t): void        { $this->turno = $t; }
     public function setCuadrillaId(?int $c): void    { $this->cuadrillaId = $c; }
     public function setContenedores(array $c): void  { $this->contenedores = $c; }
+    public function setInstalacionId(?int $i): void  { $this->instalacionId = $i; }
 
     /** Nombre legible del día, para mostrar en pantalla. */
     public function getDiaLegible(): string
@@ -80,6 +86,7 @@ class Ruta implements \JsonSerializable
             'turno'        => $this->turno,
             'cuadrillaId'  => $this->cuadrillaId,
             'contenedores' => $this->contenedores,
+            'instalacionId' => $this->instalacionId,
         ];
     }
 }

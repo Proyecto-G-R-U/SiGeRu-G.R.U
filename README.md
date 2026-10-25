@@ -63,7 +63,7 @@ const usuarios = await resp.json();
 ## Endpoints (REST)
 
 - API Usuarios:    `POST /login`, `POST /usuarios`, `GET /usuarios`
-- API Gestión:     `GET /contenedores`, `POST /contenedores`
+- API Gestión:     `GET /contenedores`, `POST /contenedores`, `GET /contenedores/zonas`
 - API Recolección: `GET /camiones`, `POST /camiones`
 
 ## Cuentas de prueba (contraseña: `1234`)
@@ -260,7 +260,7 @@ sección Contenedores.
   `POST /incidencias/eliminar` (admin)
 
 ### IMPORTANTE: reimportar la base
-Se agregó la columna `usuario.token`, así que hay que volver a importar
+Se agregó la tabla `incidencia`, así que hay que volver a importar
 `base-de-datos/base.sql` en phpMyAdmin.
 
 ### Ubicación de las instalaciones en el mapa
@@ -303,7 +303,7 @@ cada instalación se muestra en su propio panel, no como guía educativa.
 Cambió la tabla `contenedor` (nueva columna `nivel_llenado` y el ENUM de
 `estado`), así que hay que volver a importar `base-de-datos/base.sql`.
 
-## SEGURIDAD POR ROLES (2da entrega)
+## SEGURIDAD POR ROLES Y TESTS (2da entrega)
 
 ### Autenticación por token
 Antes la restricción por rol vivía solo en el frontend (el menú), pero
@@ -331,6 +331,243 @@ Criterio aplicado a los endpoints:
 Nota: el `.htaccess` incluye una regla que conserva la cabecera
 `Authorization`, porque Apache la descarta al reescribir la URL.
 
+### Pruebas
+Carpeta `tests/` con dos conjuntos complementarios (ver tests/LEEME.md):
+
+**Pruebas de API con Postman** — `SiGeRU.postman_collection.json`:
+65 peticiones y 116 comprobaciones sobre las tres APIs REST. Cubren
+autenticación, la separación de endpoints por rol (401/403), el ABM de cada
+entidad, el ciclo completo de una incidencia, las reglas de exclusividad y la
+integridad referencial. Se importa en Postman y se corre con el Collection
+Runner. Las pruebas limpian lo que crean.
+
+**Pruebas unitarias en PHP** — 72 comprobaciones sobre la lógica del backend.
+
+Ejecutar:
+    php tests/correr-tests.php
+o abrir en el navegador:
+    http://localhost/sigeru/tests/correr-tests.php
+
+Cubren: la jerarquía de herencia de usuarios e instalaciones, que las
+clases abstractas no se puedan instanciar, el hash y la verificación de
+contraseñas, que el hash nunca se serialice al frontend, la independencia
+entre integridad y llenado de los contenedores, el ciclo de vida de las
+incidencias y las relaciones de camiones, cuadrillas y maquinaria.
+
+Se implementó un runner propio (`tests/Test.php`) en vez de PHPUnit porque
+PHPUnit requiere Composer, que no viene con XAMPP; así las pruebas corren
+en cualquier máquina sin instalar nada. Las ideas son las mismas: casos,
+aserciones y reporte de pasadas/falladas.
+
 ### IMPORTANTE: reimportar la base
 Se agregó la columna `usuario.token`, así que hay que volver a importar
-`base-de-datos/base.sql` en phpMyAdmin.
+`base-de-datos/base.sql`.
+
+## MAPA INTERACTIVO DE ARMADO DE RUTAS (3ra entrega)
+
+La sección **Rutas** del administrador ahora arma el recorrido sobre un mapa
+en vez de usar selectores desplegables.
+
+### Cómo funciona
+1. Se elige en el desplegable **qué ruta se está armando**.
+2. En el mapa aparecen todos los contenedores y todas las instalaciones.
+3. Click en un **contenedor** → se suma al recorrido (o se quita si ya estaba).
+   Las paradas se dibujan con un pin numerado según el orden del recorrido.
+4. Click en una **instalación** → queda fijada como **destino final**, el lugar
+   donde el camión descarga al terminar. Click de nuevo para quitarlo.
+5. El trayecto se dibuja uniendo las paradas con una línea verde, y el tramo
+   final hasta el destino con una línea punteada celeste.
+6. Debajo del mapa, la lista ordenada de paradas permite **subir o bajar**
+   cada una con las flechas, o quitarla.
+
+### Modelo de datos
+- `ruta.instalacion_id` — destino final (FK a `instalacion`, ON DELETE SET NULL:
+  si se elimina la instalación, la ruta sobrevive sin destino).
+- `ruta_contenedor.orden` — posición de cada parada. Reordenar intercambia el
+  `orden` con la parada vecina, así la numeración queda sin huecos.
+
+### Endpoints nuevos (API Recolección)
+- `POST /rutas/mover-contenedor` — recibe `{ rutaId, contenedorId, direccion }`
+  donde dirección es -1 (subir) o 1 (bajar). Responde 400 si la parada ya está
+  en un extremo.
+- `POST /rutas/asignar-destino` — recibe `{ rutaId, instalacionId }`.
+  Con `instalacionId` en null, la ruta queda sin destino.
+
+Nota de arquitectura: la API de recolección valida la instalación consultando
+la tabla `instalacion` de la base compartida, sin llamar a la API de gestión.
+Es el mismo criterio que usa `RepositorioCuadrillas` al consultar `usuario`:
+las APIs no se hablan entre sí, comparten la base.
+
+### IMPORTANTE: reimportar la base
+Se agregó la columna `ruta.instalacion_id`, así que hay que volver a importar
+`base-de-datos/base.sql`.
+
+### Trayecto real por las calles (OSRM)
+
+El recorrido ya no se dibuja con líneas rectas entre paradas: se calcula el
+camino real siguiendo las calles con **OSRM** (Open Source Routing Machine),
+un servicio de ruteo libre. Se usa su servidor público
+`router.project-osrm.org`, que no requiere registro ni clave de API.
+
+Cómo funciona:
+1. Al cambiar el recorrido se dibujan primero líneas rectas tenues, para que
+   la respuesta sea inmediata.
+2. En paralelo se le pide a OSRM el camino por calles; cuando llega, reemplaza
+   esas rectas por el trazado real (verde para las paradas, celeste punteado
+   para el tramo final hacia el destino).
+3. Debajo del mapa se muestran la **distancia total en km** y el **tiempo
+   estimado de manejo**, que OSRM devuelve junto con la geometría.
+
+Dos detalles de implementación que vale conocer:
+
+- **Orden de coordenadas:** OSRM trabaja en `lng,lat` y Leaflet en `lat,lng`.
+  El código invierte el par en ambos sentidos. Es el error más común al
+  integrar los dos y se verificó explícitamente.
+- **Respuestas fuera de orden:** si se tocan varios contenedores seguidos, las
+  respuestas pueden llegar desordenadas y dibujar un trayecto viejo encima del
+  nuevo. Cada pedido se numera (`pedidoTrazado`) y al volver se compara: si ya
+  hay uno más reciente en curso, la respuesta vieja se descarta.
+
+Si OSRM no responde (sin internet o servidor caído), quedan las líneas rectas
+y un aviso lo explica. El mapa nunca queda vacío.
+
+Limitación a tener presente: el servidor público de OSRM es un demo, pensado
+para pruebas. Para un uso real convendría levantar una instancia propia o
+contratar un servicio de ruteo.
+
+
+## ZONAS: AGRUPACIÓN POR MUNICIPIO (3ra entrega)
+
+### Para qué está
+
+El contenedor ya guardaba `direccion`, `lat` y `lng`. Eso alcanza para
+ubicarlo en el mapa, pero no para **agruparlo**, y hay tres requerimientos
+que piden exactamente eso:
+
+| Req.      | Qué pide                                        |
+|-----------|-------------------------------------------------|
+| 3.1.1.3.4 | historial de incidencias por zona geográfica    |
+| 3.1.4.1   | listado de incidencias filtrado por zona        |
+| 3.1.4.3   | zonas críticas: cuál acumula más incidencias    |
+
+Los tres terminan en un `GROUP BY zona`. Con `lat`/`lng` no se puede hacer
+(son puntos sueltos) y con `direccion` tampoco, porque es texto libre:
+"Pocitos, 26 de Marzo" y "26 de marzo y Pocitos" contarían como dos zonas
+distintas. Por eso la zona es un campo propio.
+
+### Por qué va en el contenedor y no en la incidencia
+
+La incidencia ya apunta a un contenedor, así que la zona sale con un JOIN:
+
+```sql
+SELECT c.zona, COUNT(*) AS total
+FROM incidencia i
+JOIN contenedor c ON c.id = i.contenedor_id
+GROUP BY c.zona
+ORDER BY total DESC;
+```
+
+Guardarla también en `incidencia` sería duplicarla: si después se mueve un
+contenedor de municipio, las incidencias viejas quedarían con la zona vieja.
+
+Tampoco se deduce de la ruta: un contenedor puede estar en varias rutas o en
+ninguna, así que su zona quedaría ambigua o vacía. La zona es una propiedad
+de **dónde está el contenedor**, no de quién lo recolecta.
+
+### Qué valores
+
+Los 8 municipios de Montevideo (A, B, C, CH, D, E, F y G), que es como la
+Intendencia organiza el servicio de limpieza.
+
+La lista está en **dos lugares y nada más**:
+
+- `Contenedor::ZONAS` en `api-gestion/app/models/Contenedor.php`
+- `const ZONAS` en `frontend/index.html`
+
+Para adaptar el sistema a otra ciudad (requerimiento 1.1.2, flexibilidad en
+entornos urbanos) se cambian esas dos listas. La base no se toca: la columna
+es un `VARCHAR(80)`, no un ENUM, justamente para no atarla a Montevideo.
+
+La API valida contra esa lista y rechaza con **400** cualquier municipio
+inventado. Si entrara texto libre, los informes se llenarían de zonas
+fantasma. Vacío sí es válido y se guarda como `NULL`: significa "todavía sin
+zona asignada", que es el estado normal de un contenedor recién cargado.
+
+### Vocabulario unificado
+
+`cuadrilla`, `flota` y `ruta` ya tenían un campo `zona`, pero cada una con su
+propio vocabulario ("Zona Norte", "Pocitos"). Ahora las cuatro usan la misma
+lista de municipios y el mismo `<select>`, así que un informe puede cruzarlas
+sin traducir nombres.
+
+### Endpoint nuevo
+
+```
+GET /contenedores/zonas   → { "todas": [...], "enUso": [...] }
+```
+
+`todas` es la lista completa (para el alta). `enUso` son sólo los municipios
+que ya tienen contenedores: lo va a usar el filtro de los informes para no
+ofrecer zonas vacías.
+
+### Si ya tenés la base cargada
+
+`base.sql` ya crea la columna, así que si importás de cero no hay nada que
+hacer. Si no querés perder los datos cargados, ejecutá
+`base-de-datos/migracion-zona.sql` desde phpMyAdmin: agrega la columna,
+completa la zona de los contenedores de prueba y pasa `cuadrilla`, `flota` y
+`ruta` al vocabulario de municipios.
+
+La migración se puede correr **las veces que quieras**: pregunta al motor si
+la columna ya existe y, si está, avisa y sigue en vez de cortar con el error
+`#1060 - Nombre de columna duplicado`. Tampoco pisa zonas que hayas cargado
+a mano: sólo traduce los valores viejos conocidos.
+
+Probada contra MariaDB 10.11 (el motor de XAMPP) en los tres escenarios:
+base nueva, base vieja sin la columna, y la misma migración corrida dos
+veces seguidas.
+
+### La zona se completa sola
+
+Al marcar el punto del contenedor en el mapa, el municipio se calcula solo y
+el desplegable queda completo. No hay que elegirlo a mano.
+
+**Cómo funciona.** El frontend lleva embebidos los contornos de los 8
+municipios. Cuando hacés click, un algoritmo de punto-en-polígono (ray
+casting: traza un rayo horizontal desde el punto y cuenta cuántas veces cruza
+el borde; impar = adentro) decide en cuál cayó. Si el punto queda justo sobre
+un límite y no entra en ninguno, toma el municipio más cercano dentro de
+150 m. Si está fuera de Montevideo, deja la zona vacía.
+
+Todo pasa en el navegador: **no se consulta ningún servidor**. Funciona sin
+internet y no depende de que un servicio externo esté disponible, a
+diferencia del trazado de rutas, que sí necesita OSRM.
+
+**De dónde salen los contornos.** Del shapefile oficial "Límites de
+Municipios de Montevideo" que publica la Intendencia en el catálogo nacional
+de datos abiertos. Viene en coordenadas UTM 21S, así que está reproyectado a
+latitud/longitud, y simplificado conservando los límites compartidos entre
+municipios vecinos: si dos municipios comparten un borde, ese borde se
+simplifica una sola vez y no quedan huecos ni solapamientos. Pasó de 111.038
+puntos a 2.161, unos 46 KB.
+
+**Qué precisión tiene.** Se comparó el clasificador contra los contornos sin
+simplificar sobre 20.000 puntos repartidos por todo Montevideo:
+
+| Resultado          | Cantidad            |
+|--------------------|---------------------|
+| Acierta            | 19.987 (**99,94%**) |
+| Municipio equivocado | 13                |
+| Sin zona           | 0                   |
+
+Los 13 errores están a menos de 18 m de un límite real (mediana: 3,4 m). O
+sea: sólo se equivoca con contenedores pegados a una frontera municipal, y
+para eso el desplegable sigue siendo editable. Tarda 0,008 ms por punto, así
+que el campo se completa antes de que sueltes el mouse.
+
+**Un error que encontró.** Al probarlo contra los datos de prueba saltó que
+el contenedor CNT-403, cargado como "Rambla y Buceo" en Municipio E, tenía
+coordenadas que según los límites oficiales caen en Municipio CH. Estaba mal
+la semilla, no el algoritmo. Se corrigió moviéndolo a Malvín, que sí está en
+el Municipio E. Es exactamente el tipo de error que la asignación automática
+evita.

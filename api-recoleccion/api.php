@@ -111,6 +111,14 @@ switch ($metodo . ' ' . $ruta) {
         $rutaCtrl->agregarContenedor();
         break;
 
+    case 'POST /rutas/mover-contenedor':
+        $rutaCtrl->moverContenedor();
+        break;
+
+    case 'POST /rutas/asignar-destino':
+        $rutaCtrl->asignarDestino();
+        break;
+
     case 'POST /rutas/quitar-contenedor':
         $rutaCtrl->quitarContenedor();
         break;

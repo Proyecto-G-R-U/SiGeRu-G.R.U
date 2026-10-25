@@ -82,6 +82,7 @@ CREATE TABLE contenedor (
     id           INT AUTO_INCREMENT PRIMARY KEY,
     codigo       VARCHAR(20)  NOT NULL UNIQUE,
     direccion    VARCHAR(200) NOT NULL,
+    zona         VARCHAR(80)  NULL,                                        -- municipio al que pertenece (req. 3.1.1.3.4, 3.1.4.1, 3.1.4.3)
     tipo_residuo ENUM('mezclado','reciclable') NOT NULL,
     estado        ENUM('operativo','roto') NOT NULL DEFAULT 'operativo',   -- integridad física
     nivel_llenado ENUM('vacio','lleno','desbordado') NOT NULL DEFAULT 'vacio', -- cuánto tiene
@@ -159,8 +160,11 @@ CREATE TABLE ruta (
     dia_semana   ENUM('lunes','martes','miercoles','jueves','viernes','sabado','domingo') NOT NULL DEFAULT 'lunes',
     turno        ENUM('matutino','vespertino','nocturno') NOT NULL DEFAULT 'matutino',
     cuadrilla_id INT NULL,
+    instalacion_id INT NULL,                     -- destino final: dónde descarga el camión
     CONSTRAINT fk_ruta_cuadrilla
-        FOREIGN KEY (cuadrilla_id) REFERENCES cuadrilla(id) ON DELETE SET NULL
+        FOREIGN KEY (cuadrilla_id) REFERENCES cuadrilla(id) ON DELETE SET NULL,
+    CONSTRAINT fk_ruta_instalacion
+        FOREIGN KEY (instalacion_id) REFERENCES instalacion(id) ON DELETE SET NULL
 );
 
 -- ------------------------------------------------------------
@@ -188,16 +192,16 @@ CREATE TABLE ruta_contenedor (
 -- ============================================================
 
 INSERT INTO flota (id, nombre, zona) VALUES
-    (1, 'Flota Norte', 'Zona Norte'),
-    (2, 'Flota Sur',   'Zona Sur');
+    (1, 'Flota Norte', 'Municipio C'),
+    (2, 'Flota Sur',   'Municipio CH');
 
 INSERT INTO cuadrilla (id, nombre, zona) VALUES
-    (1, 'Cuadrilla Norte', 'Zona Norte');
+    (1, 'Cuadrilla Norte', 'Municipio C');
 
-INSERT INTO contenedor (id, codigo, direccion, tipo_residuo, estado, nivel_llenado, lat, lng) VALUES
-    (1, 'CNT-102', 'Av. Italia y Bulevar Artigas', 'reciclable', 'operativo', 'vacio',      -34.9020, -56.1550),
-    (2, 'CNT-403', 'Rambla y Buceo',               'mezclado',   'operativo', 'desbordado', -34.9110, -56.1360),
-    (3, 'CNT-210', 'Pocitos, 26 de Marzo',         'reciclable', 'roto',      'lleno',      -34.9095, -56.1520);
+INSERT INTO contenedor (id, codigo, direccion, zona, tipo_residuo, estado, nivel_llenado, lat, lng) VALUES
+    (1, 'CNT-102', 'Av. Italia y Bulevar Artigas', 'Municipio CH', 'reciclable', 'operativo', 'vacio',      -34.9020, -56.1550),
+    (2, 'CNT-403', 'Rambla Rep. de México, Malvín','Municipio E',  'mezclado',   'operativo', 'desbordado', -34.8920, -56.1150),
+    (3, 'CNT-210', 'Pocitos, 26 de Marzo',         'Municipio CH', 'reciclable', 'roto',      'lleno',      -34.9095, -56.1520);
 
 INSERT INTO camion (id, patente, modelo, estado, disponibilidad, flota_id, cuadrilla_id) VALUES
     (1, 'STP 1234', 'Volvo FE',       'operativo',     'en_ruta',    1, 1),
@@ -220,9 +224,9 @@ INSERT INTO incidencia (id, contenedor_id, tipo, descripcion, gravedad, estado, 
     (1, 2, 'desborde', 'El contenedor está desbordado hace dos días y hay bolsas en la vereda.', 'alta', 'abierta',  NULL, 'Vecino de Prueba', NOW()),
     (2, 1, 'rotura',   'La tapa está rota y no cierra.',                                          'media', 'en_curso', 1,   'Marta Pérez',      NOW());
 
-INSERT INTO ruta (id, nombre, zona, dia_semana, turno, cuadrilla_id) VALUES
-    (1, 'Ruta Pocitos Mañana', 'Pocitos',   'lunes',  'matutino',   1),
-    (2, 'Ruta Buceo Tarde',    'Buceo',     'martes', 'vespertino', NULL);
+INSERT INTO ruta (id, nombre, zona, dia_semana, turno, cuadrilla_id, instalacion_id) VALUES
+    (1, 'Ruta Pocitos Mañana', 'Municipio CH', 'lunes',  'matutino',   1,    1),
+    (2, 'Ruta Malvín Tarde',   'Municipio E',  'martes', 'vespertino', NULL, 3);
 
 INSERT INTO ruta_contenedor (ruta_id, contenedor_id, orden) VALUES
     (1, 3, 1),

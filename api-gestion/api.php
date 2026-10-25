@@ -76,6 +76,12 @@ switch ($metodo . ' ' . $ruta) {
         $controller->modificar();
         break;
 
+    // Municipios disponibles: los usa el alta de contenedores y, más
+    // adelante, el filtro por zona de los informes (3.1.4.1).
+    case 'GET /contenedores/zonas':
+        $controller->zonas();
+        break;
+
     // ---- Instalaciones (centros de acopio, plantas, vertederos) ----
     case 'GET /instalaciones':
         $instalacionCtrl->listar();

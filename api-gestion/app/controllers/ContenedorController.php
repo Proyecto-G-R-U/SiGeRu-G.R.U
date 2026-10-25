@@ -36,6 +36,7 @@ class ContenedorController extends ControladorBase
         $tipoResiduo = $datos['tipoResiduo'] ?? 'mezclado';
         $estado      = $datos['estado'] ?? 'operativo';
         $nivelLlenado = $datos['nivelLlenado'] ?? 'vacio';
+        $zona = $this->leerZona($datos);
         $lat = isset($datos['lat']) && $datos['lat'] !== '' && $datos['lat'] !== null ? (float)$datos['lat'] : null;
         $lng = isset($datos['lng']) && $datos['lng'] !== '' && $datos['lng'] !== null ? (float)$datos['lng'] : null;
 
@@ -54,7 +55,8 @@ class ContenedorController extends ControladorBase
             $estado,
             $lat,
             $lng,
-            $nivelLlenado
+            $nivelLlenado,
+            $zona
         );
         $this->repo->agregar($contenedor);
 
@@ -77,7 +79,7 @@ class ContenedorController extends ControladorBase
 
     /**
      * POST /contenedores/modificar — edita un contenedor.
-     * Recibe { id, codigo, direccion, tipoResiduo, estado, lat, lng }.
+     * Recibe { id, codigo, direccion, zona, tipoResiduo, estado, lat, lng }.
      */
     public function modificar(): void
     {
@@ -89,6 +91,7 @@ class ContenedorController extends ControladorBase
         $tipoResiduo = $datos['tipoResiduo'] ?? 'mezclado';
         $estado      = $datos['estado'] ?? 'operativo';
         $nivelLlenado = $datos['nivelLlenado'] ?? 'vacio';
+        $zona = $this->leerZona($datos);
         $lat = isset($datos['lat']) && $datos['lat'] !== '' && $datos['lat'] !== null ? (float)$datos['lat'] : null;
         $lng = isset($datos['lng']) && $datos['lng'] !== '' && $datos['lng'] !== null ? (float)$datos['lng'] : null;
 
@@ -102,7 +105,7 @@ class ContenedorController extends ControladorBase
             $this->error('Marcá la ubicación del contenedor en el mapa.', 400);
         }
 
-        $contenedor = new Contenedor($id, $codigo, $direccion, $tipoResiduo, $estado, $lat, $lng, $nivelLlenado);
+        $contenedor = new Contenedor($id, $codigo, $direccion, $tipoResiduo, $estado, $lat, $lng, $nivelLlenado, $zona);
         if (!$this->repo->actualizar($contenedor)) {
             $this->error('No existe un contenedor con ese id.', 404);
         }
@@ -110,4 +113,39 @@ class ContenedorController extends ControladorBase
         $this->responder(['mensaje' => 'Contenedor modificado correctamente.', 'contenedor' => $contenedor], 200);
     }
 
+    /**
+     * GET /contenedores/zonas — municipios disponibles.
+     *
+     * Devuelve { todas: [...], enUso: [...] }:
+     *   - todas: la lista completa, para el <select> del alta.
+     *   - enUso: sólo las que ya tienen contenedores, para los filtros
+     *     de los informes (3.1.4.1), así no se ofrecen municipios vacíos.
+     */
+    public function zonas(): void
+    {
+        $this->exigirLogin();
+        $this->responder([
+            'todas' => Contenedor::ZONAS,
+            'enUso' => $this->repo->zonas(),
+        ], 200);
+    }
+
+    /**
+     * Saca la zona del cuerpo del pedido y la valida.
+     * Vacío o ausente significa "sin zona asignada" (null), que es válido:
+     * un contenedor recién cargado puede no tener municipio todavía.
+     * Un municipio inventado sí es un error: si entrara, rompería el
+     * GROUP BY de los informes con zonas fantasma.
+     */
+    private function leerZona(array $datos): ?string
+    {
+        $zona = trim((string)($datos['zona'] ?? ''));
+        if ($zona === '') {
+            return null;
+        }
+        if (!Contenedor::zonaValida($zona)) {
+            $this->error('La zona "' . $zona . '" no es un municipio válido.', 400);
+        }
+        return $zona;
+    }
 }

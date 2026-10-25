@@ -53,13 +53,15 @@ class RutaController extends ControladorBase
         $turno  = $datos['turno'] ?? 'matutino';
         $cuadrillaId = isset($datos['cuadrillaId']) && $datos['cuadrillaId'] !== ''
             ? (int)$datos['cuadrillaId'] : null;
+        $instalacionId = isset($datos['instalacionId']) && $datos['instalacionId'] !== ''
+            ? (int)$datos['instalacionId'] : null;
 
         if ($nombre === '') {
             $this->error('El nombre de la ruta es obligatorio.', 400);
         }
 
         $ruta = new Ruta($this->repo->proximoId(), $nombre, $zona !== '' ? $zona : null,
-                         $dia, $turno, $cuadrillaId);
+                         $dia, $turno, $cuadrillaId, [], $instalacionId);
         $this->repo->agregar($ruta);
 
         $this->responder(['mensaje' => 'Ruta creada correctamente.', 'ruta' => $ruta], 201);
@@ -84,7 +86,16 @@ class RutaController extends ControladorBase
             $this->error('El nombre de la ruta es obligatorio.', 400);
         }
 
-        $ruta = new Ruta($id, $nombre, $zona !== '' ? $zona : null, $dia, $turno, $cuadrillaId);
+        // Si el pedido no trae instalacionId, conservamos el destino actual:
+        // así editar el nombre o el turno no borra el destino por omisión.
+        $existente = $this->repo->buscarPorId($id);
+        $instalacionId = array_key_exists('instalacionId', $datos)
+            ? ($datos['instalacionId'] !== '' && $datos['instalacionId'] !== null
+                ? (int)$datos['instalacionId'] : null)
+            : ($existente !== null ? $existente->getInstalacionId() : null);
+
+        $ruta = new Ruta($id, $nombre, $zona !== '' ? $zona : null, $dia, $turno,
+                         $cuadrillaId, [], $instalacionId);
         if (!$this->repo->actualizar($ruta)) {
             $this->error('No existe una ruta con ese id.', 404);
         }
@@ -134,5 +145,52 @@ class RutaController extends ControladorBase
         }
         $this->repo->quitarContenedor($rutaId, $contenedorId);
         $this->responder(['mensaje' => 'Contenedor quitado del recorrido.'], 200);
+    }
+
+    /**
+     * POST /rutas/mover-contenedor — sube o baja una parada en el recorrido.
+     * Recibe { rutaId, contenedorId, direccion } donde dirección es -1 o 1.
+     */
+    public function moverContenedor(): void
+    {
+        $this->exigirAdmin();
+        $datos = $this->leerJson();
+        $rutaId       = (int)($datos['rutaId'] ?? 0);
+        $contenedorId = (int)($datos['contenedorId'] ?? 0);
+        $direccion    = (int)($datos['direccion'] ?? 0);
+
+        if ($rutaId <= 0 || $contenedorId <= 0) {
+            $this->error('Faltan datos (rutaId, contenedorId).', 400);
+        }
+        if ($direccion !== -1 && $direccion !== 1) {
+            $this->error('La dirección debe ser -1 (subir) o 1 (bajar).', 400);
+        }
+        if (!$this->repo->moverContenedor($rutaId, $contenedorId, $direccion)) {
+            $this->error('La parada ya está en un extremo del recorrido.', 400);
+        }
+
+        $this->responder(['mensaje' => 'Orden del recorrido actualizado.'], 200);
+    }
+
+    /**
+     * POST /rutas/asignar-destino — define en qué instalación descarga el
+     * camión al terminar la ruta. Recibe { rutaId, instalacionId }.
+     */
+    public function asignarDestino(): void
+    {
+        $this->exigirAdmin();
+        $datos = $this->leerJson();
+        $rutaId = (int)($datos['rutaId'] ?? 0);
+        $instalacionId = isset($datos['instalacionId']) && $datos['instalacionId'] !== ''
+            && $datos['instalacionId'] !== null ? (int)$datos['instalacionId'] : null;
+
+        if ($rutaId <= 0) {
+            $this->error('Falta el id de la ruta.', 400);
+        }
+        if (!$this->repo->asignarDestino($rutaId, $instalacionId)) {
+            $this->error('No existe la ruta o la instalación indicada.', 404);
+        }
+
+        $this->responder(['mensaje' => 'Destino de la ruta actualizado.'], 200);
     }
 }
