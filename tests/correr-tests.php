@@ -237,6 +237,35 @@ Test::igual('Tipo legible de falta de recolección', 'Falta de recolección', $o
 Test::igual('Gravedad por defecto si no se aclara', 'media', $otra->getGravedad());
 
 // ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// Historial por zona o por contenedor (requerimiento 3.1.1.3.4).
+// La zona NO se guarda en la incidencia: la trae el repositorio con un
+// JOIN contra contenedor, para que no se pueda desincronizar. Acá se
+// prueba que el modelo la transporte bien hasta el JSON.
+Test::grupo('Incidencias: zona y contenedor para el historial');
+
+$conZona = new Incidencia(9, 3, 'rotura', 'Tapa rota', 'alta',
+                          'resuelta', 1, 2, 'Ana', '2026-10-01 08:00:00', '2026-10-01 12:00:00');
+
+Test::igual('Sin el JOIN, la incidencia no sabe su zona', null, $conZona->getZona());
+Test::igual('Ni el código del contenedor',                null, $conZona->getContenedorCodigo());
+
+$conZona->setDatosContenedor('Municipio CH', 'CNT-210');
+Test::igual('El repositorio le pasa la zona',    'Municipio CH', $conZona->getZona());
+Test::igual('…y el código del contenedor',       'CNT-210',      $conZona->getContenedorCodigo());
+
+$jz = $conZona->jsonSerialize();
+Test::igual('La zona viaja en el JSON al frontend',  'Municipio CH', $jz['zona']);
+Test::igual('El código del contenedor también',      'CNT-210',      $jz['contenedorCodigo']);
+Test::igual('Y sigue estando el id del contenedor',  3,              $jz['contenedorId']);
+
+// Un contenedor sin municipio asignado es un caso válido: el historial
+// lo tiene que poder agrupar igual, bajo "Sin zona asignada".
+$sinZona = new Incidencia(10, 4, 'otro', 'Olor', 'baja');
+$sinZona->setDatosContenedor(null, 'CNT-X01');
+Test::igual('Un contenedor sin municipio deja la zona en null', null, $sinZona->getZona());
+Test::igual('…pero igual se sabe de qué contenedor es', 'CNT-X01', $sinZona->getContenedorCodigo());
+
 Test::grupo('Maquinaria: pertenece a una instalación');
 
 $maq = new Maquinaria(1, 'Cinta transportadora', 'maquinaria', 'operativa', 1, 2);

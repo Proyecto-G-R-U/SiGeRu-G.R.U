@@ -341,7 +341,7 @@ entidad, el ciclo completo de una incidencia, las reglas de exclusividad y la
 integridad referencial. Se importa en Postman y se corre con el Collection
 Runner. Las pruebas limpian lo que crean.
 
-**Pruebas unitarias en PHP** — 72 comprobaciones sobre la lógica del backend.
+**Pruebas unitarias en PHP** — 81 comprobaciones sobre la lógica del backend.
 
 Ejecutar:
     php tests/correr-tests.php
@@ -571,3 +571,88 @@ coordenadas que según los límites oficiales caen en Municipio CH. Estaba mal
 la semilla, no el algoritmo. Se corrigió moviéndolo a Malvín, que sí está en
 el Municipio E. Es exactamente el tipo de error que la asignación automática
 evita.
+
+
+## HISTORIAL DE INCIDENCIAS POR ZONA O CONTENEDOR (3ra entrega)
+
+Cierra el requerimiento **3.1.1.3.4**: *"el sistema mantendrá un historial
+detallado de incidencias organizadas por zona geográfica o contenedor
+específico"*.
+
+### Qué se ve
+
+En la sección **Incidencias**, debajo de las activas, el administrador tiene
+el historial con una barra de filtros y un resumen.
+
+**Filtros** (se combinan entre sí, y cualquier cambio recarga la lista):
+
+| Filtro      | Valores                                                     |
+|-------------|-------------------------------------------------------------|
+| Estado      | Resueltas (por defecto), Abiertas, En curso, Todas          |
+| Zona        | Cualquiera de los 8 municipios, o "Sin zona asignada"       |
+| Contenedor  | Cualquiera de los cargados                                  |
+| Gravedad    | Alta, Media, Baja                                            |
+
+**Agrupación.** El requerimiento pide el historial organizado *por zona o por
+contenedor*, así que además de filtrar se puede agrupar por una cosa o la
+otra. Al agrupar, cada bloque lleva su total y se ordenan de mayor a menor,
+que es como se lee un historial buscando dónde se concentran los problemas.
+La columna del criterio desaparece de la tabla porque ya está en el título.
+
+**Resumen por zona.** Arriba del listado, una barra por municipio con la
+cantidad de incidencias. Respeta el filtro de estado elegido.
+
+### Cómo está hecho
+
+La zona no se guarda en `incidencia`: vive en `contenedor` y se trae con un
+JOIN.
+
+```sql
+SELECT i.*, c.zona, c.codigo AS contenedor_codigo
+FROM incidencia i
+JOIN contenedor c ON c.id = i.contenedor_id
+WHERE ...
+```
+
+Es a propósito. Si la zona estuviera duplicada en la incidencia y después un
+contenedor cambiara de municipio, las incidencias viejas quedarían con el
+municipio anterior. Con el JOIN, el historial sigue al contenedor solo.
+
+El endpoint es el mismo de antes, ahora con filtros opcionales por query
+string:
+
+```
+GET /incidencias/historial
+GET /incidencias/historial?estado=todas&zona=Municipio%20CH&gravedad=alta
+GET /incidencias/historial?contenedorId=3
+GET /incidencias/historial?zona=sin-zona
+```
+
+Sin parámetros devuelve las resueltas, igual que antes, así que nada de lo
+que ya andaba se rompió. Responde
+`{ incidencias: [...], porZona: [{zona, total}, ...] }`: el resumen viene en
+la misma respuesta para no hacer dos viajes.
+
+**Sobre la seguridad.** El `WHERE` se arma juntando condiciones con
+marcadores `?` y pasando los valores aparte, nunca pegándolos al texto del
+SQL. Hay una prueba que manda `Municipio CH' OR '1'='1` como zona y verifica
+que devuelva 0 filas en vez de la tabla entera. Los valores de `estado` y
+`gravedad` además se validan contra una lista blanca y responden **400** si
+no están en ella.
+
+`totalesPorZona()` es la consulta que después va a usar el informe de zonas
+críticas (3.1.4.3): ya está escrita y probada.
+
+### Qué se probó
+
+- **29 comprobaciones contra MySQL** sobre el repositorio: cada filtro por
+  separado, combinados, los contenedores sin municipio, el orden, los
+  totales por zona y el intento de inyección.
+- **11 comprobaciones por HTTP** contra el endpoint real con token de
+  administrador: los filtros, la validación de parámetros (400 con valores
+  inventados), el 401 sin token y la inyección por la query string.
+- **15 comprobaciones del armado de la tabla** en el frontend, cargando el
+  JavaScript real de `index.html` y alimentándolo con la respuesta real de
+  la API: agrupación por zona y por contenedor, los totales, el orden y la
+  lista vacía.
+- Las **81 pruebas unitarias** del proyecto siguen pasando.

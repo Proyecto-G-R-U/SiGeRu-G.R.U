@@ -335,3 +335,49 @@ html, body { height:100%; font-family:'Segoe UI', sans-serif; background:var(--b
 }
 .zona-auto.ok    { color: #1b7f4b; }
 .zona-auto.aviso { color: #b45309; }
+
+/* ---- Historial de incidencias: filtros, resumen por zona y agrupación ---- */
+.filtros {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 10px 0 14px;
+}
+.filtros > div { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
+.filtros label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.filtros select { padding: 6px 8px; }
+
+.resumen-zonas { margin-bottom: 16px; }
+.rz-item {
+    display: grid;
+    grid-template-columns: minmax(120px, 190px) 1fr 44px;
+    align-items: center;
+    gap: 10px;
+    padding: 3px 0;
+}
+.rz-nombre { font-size: 13px; }
+.rz-barra { background: #e5e7eb; border-radius: 3px; height: 8px; overflow: hidden; }
+.rz-barra i { display: block; height: 100%; background: #0d8ecf; }
+.rz-total { font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+
+.grupo-hist { margin-bottom: 20px; }
+.grupo-hist-tit {
+    font-size: 15px;
+    margin: 0 0 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.grupo-hist-n {
+    font-size: 12px;
+    font-weight: 600;
+    background: #e5e7eb;
+    color: #374151;
+    border-radius: 10px;
+    padding: 1px 8px;
+}
+@media (max-width: 600px) {
+    .filtros > div { min-width: 100%; }
+    .rz-item { grid-template-columns: 1fr 44px; }
+    .rz-barra { display: none; }
+}

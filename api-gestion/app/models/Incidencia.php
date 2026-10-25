@@ -85,10 +85,28 @@ class Incidencia implements \JsonSerializable
         };
     }
 
+    // ---- Datos del contenedor traídos por JOIN ----
+    // No se guardan en la tabla incidencia: los completa el repositorio
+    // cuando la consulta une con contenedor. Sirven para que el historial
+    // pueda agruparse y filtrarse por zona sin pedir los contenedores
+    // aparte (requerimiento 3.1.1.3.4).
+    private ?string $zona = null;
+    private ?string $contenedorCodigo = null;
+
+    public function getZona(): ?string             { return $this->zona; }
+    public function getContenedorCodigo(): ?string { return $this->contenedorCodigo; }
+    public function setDatosContenedor(?string $zona, ?string $codigo): void
+    {
+        $this->zona = $zona;
+        $this->contenedorCodigo = $codigo;
+    }
+
     public function jsonSerialize(): array
     {
         return [
             'id'                 => $this->id,
+            'zona'               => $this->zona,
+            'contenedorCodigo'   => $this->contenedorCodigo,
             'contenedorId'       => $this->contenedorId,
             'tipo'               => $this->tipo,
             'tipoLegible'        => $this->getTipoLegible(),

@@ -36,11 +36,48 @@ class IncidenciaController extends ControladorBase
         $this->responder($this->repo->activas(), 200);
     }
 
-    /** Historial de incidencias resueltas. */
+    /**
+     * GET /incidencias/historial — historial de incidencias (req. 3.1.1.3.4).
+     *
+     * Sin parámetros devuelve las resueltas, que es como venía funcionando.
+     * Acepta filtros por la query string, todos opcionales:
+     *
+     *   ?estado=resuelta|abierta|en_curso|todas
+     *   ?zona=Municipio+CH   (o 'sin-zona' para las que no tienen municipio)
+     *   ?contenedorId=3
+     *   ?gravedad=alta|media|baja
+     *
+     * Responde { incidencias: [...], porZona: [{zona, total}, ...] } para que
+     * la pantalla pueda mostrar el resumen sin pedir una segunda consulta.
+     */
     public function historial(): void
     {
         $this->exigirLogin();
-        $this->responder($this->repo->historial(), 200);
+
+        $estado = trim((string)($_GET['estado'] ?? 'resuelta'));
+        if ($estado === 'todas') {
+            $estado = null;                    // null = sin filtrar por estado
+        } elseif ($estado !== '' && !in_array($estado, ['abierta', 'en_curso', 'resuelta'], true)) {
+            $this->error('Estado inválido: ' . $estado, 400);
+        }
+
+        $gravedad = trim((string)($_GET['gravedad'] ?? ''));
+        if ($gravedad !== '' && !in_array($gravedad, ['baja', 'media', 'alta'], true)) {
+            $this->error('Gravedad inválida: ' . $gravedad, 400);
+        }
+
+        $zona         = trim((string)($_GET['zona'] ?? ''));
+        $contenedorId = (int)($_GET['contenedorId'] ?? 0);
+
+        $this->responder([
+            'incidencias' => $this->repo->historialFiltrado(
+                $estado === '' ? null : $estado,
+                $zona === '' ? null : $zona,
+                $contenedorId > 0 ? $contenedorId : null,
+                $gravedad === '' ? null : $gravedad
+            ),
+            'porZona' => $this->repo->totalesPorZona($estado === '' ? null : $estado),
+        ], 200);
     }
 
     /**

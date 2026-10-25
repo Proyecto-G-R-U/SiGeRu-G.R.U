@@ -707,7 +707,32 @@
         if (esAdmin) {
             html += '<h2 class="sec-titulo">Incidencias activas</h2>'
                  + '<div id="lista-incidencias"></div>'
-                 + '<h2 class="sec-titulo">Historial de incidencias resueltas</h2>'
+                 + '<h2 class="sec-titulo">Historial de incidencias</h2>'
+                 + '<p class="txt-muted">Se puede filtrar y agrupar por zona o por contenedor '
+                 + '(requerimiento 3.1.1.3.4).</p>'
+                 + '<div class="filtros">'
+                 +   '<div><label>Estado</label><select id="h-estado">'
+                 +     '<option value="resuelta" selected>Resueltas</option>'
+                 +     '<option value="abierta">Abiertas</option>'
+                 +     '<option value="en_curso">En curso</option>'
+                 +     '<option value="todas">Todas</option></select></div>'
+                 +   '<div><label>Zona</label><select id="h-zona">'
+                 +     '<option value="">Todas las zonas</option>'
+                 +     ZONAS.map(function (z) { return '<option value="' + z + '">' + z + '</option>'; }).join('')
+                 +     '<option value="sin-zona">Sin zona asignada</option></select></div>'
+                 +   '<div><label>Contenedor</label><select id="h-contenedor">'
+                 +     '<option value="">Todos</option></select></div>'
+                 +   '<div><label>Gravedad</label><select id="h-gravedad">'
+                 +     '<option value="">Todas</option>'
+                 +     '<option value="alta">Alta</option>'
+                 +     '<option value="media">Media</option>'
+                 +     '<option value="baja">Baja</option></select></div>'
+                 +   '<div><label>Agrupar por</label><select id="h-agrupar">'
+                 +     '<option value="">Sin agrupar</option>'
+                 +     '<option value="zona">Zona</option>'
+                 +     '<option value="contenedor">Contenedor</option></select></div>'
+                 + '</div>'
+                 + '<div id="historial-resumen"></div>'
                  + '<div id="historial-incidencias"></div>';
         } else {
             html += '<h2 class="sec-titulo">Problemas reportados</h2>'
@@ -2370,7 +2395,7 @@
             try { cacheCuadrillas = await (await fetchGet(API_USUARIOS + '/cuadrillas')).json(); } catch (e) {}
         }
         refrescarListaIncidencias();
-        if (esAdmin) refrescarHistorial();
+        if (esAdmin) { engancharFiltrosHistorial(); refrescarHistorial(); }
     }
 
     // Dibuja los contenedores en el mapa, marcando los que tienen incidencias.
@@ -2536,30 +2561,156 @@
             filas + '</tbody></table>';
     }
 
-    // Historial de incidencias resueltas (solo admin).
+    // ---- Historial de incidencias, filtrable y agrupable (req. 3.1.1.3.4) ----
+    // El requerimiento pide el historial "organizado por zona geográfica o
+    // contenedor específico": de ahí que además de filtrar se pueda agrupar
+    // por una cosa o la otra.
+
+    // Llena el desplegable de contenedores una sola vez, cuando ya se
+    // cargaron. Conserva lo que hubiera elegido el usuario.
+    function llenarSelectContenedores() {
+        const sel = document.getElementById('h-contenedor');
+        if (!sel || sel.dataset.lleno === '1' || cacheContenedores.length === 0) return;
+        const elegido = sel.value;
+        sel.innerHTML = '<option value="">Todos</option>'
+            + cacheContenedores.map(function (c) {
+                return '<option value="' + c.id + '">' + c.codigo + ' — ' + c.direccion + '</option>';
+            }).join('');
+        sel.value = elegido;
+        sel.dataset.lleno = '1';
+    }
+
+    function filtrosHistorial() {
+        const v = function (id) {
+            const e = document.getElementById(id);
+            return e ? e.value : '';
+        };
+        return {
+            estado:       v('h-estado') || 'resuelta',
+            zona:         v('h-zona'),
+            contenedorId: v('h-contenedor'),
+            gravedad:     v('h-gravedad'),
+            agrupar:      v('h-agrupar'),
+        };
+    }
+
+    // Resumen de arriba: cuántas incidencias tiene cada zona.
+    function pintarResumenZonas(porZona, agrupar) {
+        const cont = document.getElementById('historial-resumen');
+        if (!cont) return;
+        if (!porZona || porZona.length === 0) { cont.innerHTML = ''; return; }
+        const total = porZona.reduce(function (a, z) { return a + z.total; }, 0);
+        const max = porZona[0].total;
+        cont.innerHTML = '<div class="resumen-zonas">'
+            + porZona.map(function (z) {
+                const pct = max > 0 ? Math.round(100 * z.total / max) : 0;
+                return '<div class="rz-item">'
+                     + '<span class="rz-nombre">' + z.zona + '</span>'
+                     + '<span class="rz-barra"><i style="width:' + pct + '%"></i></span>'
+                     + '<span class="rz-total">' + z.total + '</span></div>';
+            }).join('')
+            + '<p class="txt-muted">' + total + ' incidencia' + (total === 1 ? '' : 's')
+            + ' en ' + porZona.length + ' zona' + (porZona.length === 1 ? '' : 's')
+            + ', con el estado elegido arriba.</p></div>';
+    }
+
+    function filaHistorial(i, agrupar) {
+        const cuad = i.cuadrillaId ? nombreCuadrilla(i.cuadrillaId) : '—';
+        const cod  = i.contenedorCodigo || ('#' + i.contenedorId);
+        let celdas = '<td>' + pillGravedad(i.gravedad) + '</td><td>' + i.tipoLegible + '</td>';
+        // Al agrupar, la columna del criterio sobra: ya está en el encabezado.
+        if (agrupar !== 'zona')       celdas += '<td>' + textoZona(i.zona) + '</td>';
+        if (agrupar !== 'contenedor') celdas += '<td>' + cod + '</td>';
+        celdas += '<td>' + i.descripcion + '</td><td>' + cuad + '</td>'
+               +  '<td>' + etiquetaEstadoInc(i.estado) + '</td>'
+               +  '<td>' + (i.fechaReporte || '').substring(0, 16) + '</td>'
+               +  '<td>' + ((i.fechaResolucion || '—').substring(0, 16)) + '</td>';
+        return '<tr>' + celdas + '</tr>';
+    }
+
+    function etiquetaEstadoInc(e) {
+        if (e === 'resuelta') return '<span class="pill pill-ok">Resuelta</span>';
+        if (e === 'en_curso') return '<span class="pill pill-warn">En curso</span>';
+        return '<span class="pill pill-bad">Abierta</span>';
+    }
+
+    function encabezadoHistorial(agrupar) {
+        let th = '<th>Gravedad</th><th>Tipo</th>';
+        if (agrupar !== 'zona')       th += '<th>Zona</th>';
+        if (agrupar !== 'contenedor') th += '<th>Contenedor</th>';
+        th += '<th>Descripción</th><th>Cuadrilla</th><th>Estado</th>'
+           +  '<th>Reportada</th><th>Resuelta</th>';
+        return '<thead><tr>' + th + '</tr></thead>';
+    }
+
+    function tablaHistorial(lista, agrupar) {
+        if (!agrupar) {
+            return '<table class="tabla">' + encabezadoHistorial('')
+                 + '<tbody>' + lista.map(function (i) { return filaHistorial(i, ''); }).join('')
+                 + '</tbody></table>';
+        }
+        // Agrupado: un bloque por zona o por contenedor, ordenados de mayor
+        // a menor cantidad, que es como se lee un historial buscando dónde
+        // se concentran los problemas.
+        const grupos = {};
+        lista.forEach(function (i) {
+            const clave = agrupar === 'zona'
+                ? (i.zona || 'Sin zona asignada')
+                : ((i.contenedorCodigo || ('#' + i.contenedorId)));
+            (grupos[clave] = grupos[clave] || []).push(i);
+        });
+        return Object.keys(grupos)
+            .sort(function (a, b) { return grupos[b].length - grupos[a].length || a.localeCompare(b); })
+            .map(function (clave) {
+                const g = grupos[clave];
+                return '<div class="grupo-hist">'
+                     + '<h3 class="grupo-hist-tit">' + clave
+                     + ' <span class="grupo-hist-n">' + g.length + '</span></h3>'
+                     + '<table class="tabla">' + encabezadoHistorial(agrupar)
+                     + '<tbody>' + g.map(function (i) { return filaHistorial(i, agrupar); }).join('')
+                     + '</tbody></table></div>';
+            }).join('');
+    }
+
     async function refrescarHistorial() {
         const cont = document.getElementById('historial-incidencias');
         if (!cont) return;
+        llenarSelectContenedores();
+
+        const f = filtrosHistorial();
+        const q = new URLSearchParams();
+        q.set('estado', f.estado);
+        if (f.zona)         q.set('zona', f.zona);
+        if (f.contenedorId) q.set('contenedorId', f.contenedorId);
+        if (f.gravedad)     q.set('gravedad', f.gravedad);
+
         try {
-            const lista = await (await fetchGet(API_GESTION + '/incidencias/historial')).json();
-            if (lista.length === 0) {
-                cont.innerHTML = '<p class="flota-vacia">Todavía no hay incidencias resueltas.</p>';
+            const resp = await fetchGet(API_GESTION + '/incidencias/historial?' + q.toString());
+            const datos = await resp.json();
+            if (!resp.ok) {
+                cont.innerHTML = '<p class="flota-vacia">' + (datos.error || 'No se pudo cargar.') + '</p>';
                 return;
             }
-            const filas = lista.map(function (i) {
-                const c = cacheContenedores.find(function (x) { return x.id === i.contenedorId; });
-                const cuad = i.cuadrillaId ? nombreCuadrilla(i.cuadrillaId) : '—';
-                return '<tr><td>' + pillGravedad(i.gravedad) + '</td><td>' + i.tipoLegible + '</td><td>' +
-                    (c ? c.codigo : '#' + i.contenedorId) + '</td><td>' + i.descripcion + '</td><td>' +
-                    cuad + '</td><td>' + (i.fechaReporte || '').substring(0, 16) + '</td><td>' +
-                    (i.fechaResolucion || '').substring(0, 16) + '</td></tr>';
-            }).join('');
-            cont.innerHTML = '<table class="tabla"><thead><tr><th>Gravedad</th><th>Tipo</th>' +
-                '<th>Contenedor</th><th>Descripción</th><th>Cuadrilla</th><th>Reportada</th>' +
-                '<th>Resuelta</th></tr></thead><tbody>' + filas + '</tbody></table>';
+            const lista = datos.incidencias || [];
+            pintarResumenZonas(datos.porZona, f.agrupar);
+            cont.innerHTML = lista.length === 0
+                ? '<p class="flota-vacia">No hay incidencias que cumplan ese filtro.</p>'
+                : tablaHistorial(lista, f.agrupar);
         } catch (err) {
             cont.innerHTML = '<p class="flota-vacia">Error al cargar el historial.</p>';
         }
+    }
+
+    // Cualquier cambio en los filtros recarga el historial. Se engancha una
+    // sola vez por render de la sección.
+    function engancharFiltrosHistorial() {
+        ['h-estado', 'h-zona', 'h-contenedor', 'h-gravedad', 'h-agrupar'].forEach(function (id) {
+            const e = document.getElementById(id);
+            if (e && e.dataset.enganchado !== '1') {
+                e.addEventListener('change', refrescarHistorial);
+                e.dataset.enganchado = '1';
+            }
+        });
     }
 
     function pillGravedad(g) {

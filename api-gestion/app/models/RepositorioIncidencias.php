@@ -16,7 +16,7 @@ class RepositorioIncidencias extends RepositorioSql
 
     protected function aObjeto(array $f): object
     {
-        return new Incidencia(
+        $i = new Incidencia(
             (int)$f['id'],
             (int)$f['contenedor_id'],
             $f['tipo'],
@@ -29,6 +29,11 @@ class RepositorioIncidencias extends RepositorioSql
             (string)$f['fecha_reporte'],
             $f['fecha_resolucion'] !== null ? (string)$f['fecha_resolucion'] : null
         );
+        // Si la consulta unió con contenedor, aprovechamos esos datos.
+        if (array_key_exists('zona', $f) || array_key_exists('contenedor_codigo', $f)) {
+            $i->setDatosContenedor($f['zona'] ?? null, $f['contenedor_codigo'] ?? null);
+        }
+        return $i;
     }
 
     // ---------------- Métodos específicos ----------------
@@ -66,6 +71,92 @@ class RepositorioIncidencias extends RepositorioSql
             [$this, 'aObjeto'],
             $this->filas("SELECT * FROM incidencia WHERE estado = 'resuelta'
                           ORDER BY fecha_resolucion DESC")
+        );
+    }
+
+    /**
+     * Historial filtrable (requerimiento 3.1.1.3.4, y base del 3.1.4.1).
+     *
+     * Une con contenedor porque la zona vive ahí, no en la incidencia: así
+     * si un contenedor cambia de municipio, su historial lo acompaña solo.
+     *
+     * Todos los filtros son opcionales; los que vengan en null no se aplican.
+     * El WHERE se arma juntando condiciones con marcadores ?, nunca pegando
+     * los valores en el texto del SQL: eso es lo que evita la inyección.
+     *
+     * @param string|null $estado 'resuelta', 'abierta', 'en_curso' o null = todas
+     */
+    public function historialFiltrado(
+        ?string $estado = 'resuelta',
+        ?string $zona = null,
+        ?int $contenedorId = null,
+        ?string $gravedad = null
+    ): array {
+        $condiciones = [];
+        $params = [];
+
+        if ($estado !== null && $estado !== '') {
+            $condiciones[] = 'i.estado = ?';
+            $params[] = $estado;
+        }
+        if ($zona !== null && $zona !== '') {
+            // 'sin-zona' busca los contenedores a los que todavía no se les
+            // asignó municipio: son los que quedarían invisibles en un
+            // informe por zona si no se pudieran listar.
+            if ($zona === 'sin-zona') {
+                $condiciones[] = "(c.zona IS NULL OR c.zona = '')";
+            } else {
+                $condiciones[] = 'c.zona = ?';
+                $params[] = $zona;
+            }
+        }
+        if ($contenedorId !== null && $contenedorId > 0) {
+            $condiciones[] = 'i.contenedor_id = ?';
+            $params[] = $contenedorId;
+        }
+        if ($gravedad !== null && $gravedad !== '') {
+            $condiciones[] = 'i.gravedad = ?';
+            $params[] = $gravedad;
+        }
+
+        $where = $condiciones ? 'WHERE ' . implode(' AND ', $condiciones) : '';
+
+        $sql = "SELECT i.*, c.zona AS zona, c.codigo AS contenedor_codigo
+                FROM incidencia i
+                JOIN contenedor c ON c.id = i.contenedor_id
+                $where
+                ORDER BY COALESCE(i.fecha_resolucion, i.fecha_reporte) DESC";
+
+        return array_map([$this, 'aObjeto'], $this->filas($sql, $params));
+    }
+
+    /**
+     * Cuántas incidencias tiene cada zona, de mayor a menor.
+     * El historial la usa para el resumen de arriba; es además la consulta
+     * que va a necesitar el informe de zonas críticas (3.1.4.3).
+     *
+     * @return array<int, array{zona: string, total: int}>
+     */
+    public function totalesPorZona(?string $estado = null): array
+    {
+        $where = '';
+        $params = [];
+        if ($estado !== null && $estado !== '') {
+            $where = 'WHERE i.estado = ?';
+            $params[] = $estado;
+        }
+        $filas = $this->filas(
+            "SELECT COALESCE(NULLIF(c.zona, ''), 'Sin zona asignada') AS zona,
+                    COUNT(*) AS total
+             FROM incidencia i
+             JOIN contenedor c ON c.id = i.contenedor_id
+             $where
+             GROUP BY COALESCE(NULLIF(c.zona, ''), 'Sin zona asignada')
+             ORDER BY total DESC, zona", $params
+        );
+        return array_map(
+            static fn(array $f): array => ['zona' => $f['zona'], 'total' => (int)$f['total']],
+            $filas
         );
     }
 
