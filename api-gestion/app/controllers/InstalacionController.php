@@ -56,7 +56,8 @@ class InstalacionController extends ControladorBase
         }
 
         $instalacion = $this->crearInstalacion(
-            $this->repo->proximoId(), $nombre, $direccion, $tipo, $capacidad, $tipoResiduo, $estado, $lat, $lng, $ocupacion
+            $this->repo->proximoId(), $nombre, $direccion, $tipo, $capacidad, $tipoResiduo, $estado,
+            $lat, $lng, $ocupacion, $this->leerZona($datos)
         );
         $this->repo->agregar($instalacion);
 
@@ -91,7 +92,8 @@ class InstalacionController extends ControladorBase
             $this->error('Marcá la ubicación de la instalación en el mapa.', 400);
         }
 
-        $instalacion = $this->crearInstalacion($id, $nombre, $direccion, $tipo, $capacidad, $tipoResiduo, $estado, $lat, $lng, $ocupacion);
+        $instalacion = $this->crearInstalacion($id, $nombre, $direccion, $tipo, $capacidad,
+            $tipoResiduo, $estado, $lat, $lng, $ocupacion, $this->leerZona($datos));
         if (!$this->repo->actualizar($instalacion)) {
             $this->error('No existe una instalación con ese id.', 404);
         }
@@ -120,12 +122,29 @@ class InstalacionController extends ControladorBase
     private function crearInstalacion(
         int $id, string $nombre, string $direccion, string $tipo,
         int $capacidad, string $tipoResiduo, string $estado,
-        ?float $lat = null, ?float $lng = null, int $ocupacion = 0
+        ?float $lat = null, ?float $lng = null, int $ocupacion = 0, ?string $zona = null
     ): \App\Models\Instalacion {
         return match ($tipo) {
-            'clasificacion' => new PlantaClasificacion($id, $nombre, $direccion, $capacidad, $tipoResiduo, $estado, $lat, $lng, $ocupacion),
-            'vertedero'     => new Vertedero($id, $nombre, $direccion, $capacidad, $tipoResiduo, $estado, $lat, $lng, $ocupacion),
-            default         => new CentroAcopio($id, $nombre, $direccion, $capacidad, $tipoResiduo, $estado, $lat, $lng, $ocupacion),
+            'clasificacion' => new PlantaClasificacion($id, $nombre, $direccion, $capacidad, $tipoResiduo, $estado, $lat, $lng, $ocupacion, $zona),
+            'vertedero'     => new Vertedero($id, $nombre, $direccion, $capacidad, $tipoResiduo, $estado, $lat, $lng, $ocupacion, $zona),
+            default         => new CentroAcopio($id, $nombre, $direccion, $capacidad, $tipoResiduo, $estado, $lat, $lng, $ocupacion, $zona),
         };
+    }
+
+    /**
+     * Zona de la instalación. Mismo criterio que en el contenedor: vacío es
+     * válido (null), un municipio inventado no, porque ensuciaría los
+     * informes por zona con municipios que no existen.
+     */
+    private function leerZona(array $datos): ?string
+    {
+        $zona = trim((string)($datos['zona'] ?? ''));
+        if ($zona === '') {
+            return null;
+        }
+        if (!\App\Models\Contenedor::zonaValida($zona)) {
+            $this->error('La zona "' . $zona . '" no es un municipio válido.', 400);
+        }
+        return $zona;
     }
 }

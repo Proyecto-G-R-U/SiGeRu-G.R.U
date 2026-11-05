@@ -381,3 +381,151 @@ html, body { height:100%; font-family:'Segoe UI', sans-serif; background:var(--b
     .rz-item { grid-template-columns: 1fr 44px; }
     .rz-barra { display: none; }
 }
+
+/* ---- Sección Informes (requerimientos 3.1.4.2 a 3.1.4.6) ---- */
+.kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 12px;
+    margin-bottom: 8px;
+}
+.kpi-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-left: 3px solid #9ca3af;
+    border-radius: 4px;
+    padding: 12px 14px;
+}
+.kpi-card .kpi-rot {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: #6b7280;
+}
+.kpi-card .kpi-val {
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.15;
+    margin: 4px 0 2px;
+    font-variant-numeric: tabular-nums;
+}
+.kpi-card .kpi-pie { font-size: 12px; color: #6b7280; line-height: 1.35; }
+.kpi-ok   { border-left-color: #1b7f4b; }
+.kpi-warn { border-left-color: #b45309; }
+.kpi-bad  { border-left-color: #b91c1c; }
+
+.panel-param { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
+.panel-param > div { display: flex; align-items: center; gap: 8px; }
+.panel-param label { font-size: 13px; }
+.panel-param input[type="range"] { width: 170px; }
+.panel-param input[type="number"] { width: 70px; padding: 5px 7px; }
+.panel-param #inf-factor-txt { font-weight: 600; min-width: 42px; font-variant-numeric: tabular-nums; }
+.panel-param .txt-muted { flex-basis: 100%; margin: 0; }
+
+.rz-ancho { min-width: 72px; }
+.fila-total td { border-top: 2px solid #d1d5db; }
+.exportar { display: flex; flex-wrap: wrap; gap: 8px; }
+
+@media (max-width: 600px) {
+    .panel-param > div { width: 100%; }
+    .panel-param input[type="range"] { flex: 1; width: auto; }
+}
+
+/* ---- Campana de notificaciones ---- */
+.campana-caja { position: relative; }
+.campana {
+    background: none;
+    border: 0;
+    cursor: pointer;
+    color: inherit;
+    padding: 6px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    position: relative;
+}
+.campana:hover { background: rgba(0, 0, 0, .07); }
+.campana-activa { color: #b45309; }
+.campana-badge {
+    position: absolute;
+    top: 0;
+    right: 0;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    border-radius: 9px;
+    background: #b91c1c;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 17px;
+    text-align: center;
+}
+
+.notis-panel {
+    position: absolute;
+    top: 42px;
+    right: 0;
+    width: 340px;
+    max-width: calc(100vw - 32px);
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .14);
+    z-index: 1200;
+    overflow: hidden;
+}
+.notis-cab {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 9px 12px;
+    border-bottom: 1px solid #e5e7eb;
+    font-weight: 600;
+    font-size: 13px;
+    background: #f9fafb;
+}
+.notis-todas {
+    background: none;
+    border: 0;
+    color: #0d8ecf;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 4px;
+}
+.notis-todas:hover { text-decoration: underline; }
+.notis-lista { max-height: 380px; overflow-y: auto; }
+.notis-vacio { padding: 20px 12px; text-align: center; color: #6b7280; font-size: 13px; margin: 0; }
+
+.noti {
+    display: flex;
+    gap: 10px;
+    padding: 10px 12px;
+    border-bottom: 1px solid #f1f2f4;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+}
+.noti:last-child { border-bottom: 0; }
+.noti:hover { background: #f9fafb; }
+.noti-nueva { background: #f0f7fd; }
+.noti-nueva:hover { background: #e6f1fa; }
+.noti-alta  { border-left-color: #b91c1c; }
+.noti-media { border-left-color: #b45309; }
+.noti-baja  { border-left-color: #9ca3af; }
+.noti-ico { font-size: 19px; color: #6b7280; flex: none; margin-top: 1px; }
+.noti-txt { min-width: 0; }
+.noti-tit { font-size: 13px; font-weight: 600; line-height: 1.3; }
+.noti-msg { font-size: 12.5px; color: #4b5563; line-height: 1.35; margin-top: 1px; }
+.noti-fecha { font-size: 11px; color: #9ca3af; margin-top: 3px; }
+
+@media (max-width: 480px) {
+    .notis-panel { width: calc(100vw - 24px); right: -8px; }
+}
+
+/* Cuadradito de la leyenda: los puntos de reciclaje se dibujan como
+   cuadrados para distinguirlos de los contenedores, que son redondos
+   (requerimiento 3.1.3.2). */
+.leyenda i.lg-cuadro { border-radius: 2px; }
+
+/* Marca de que la incidencia es sobre una instalación y no un contenedor */
+.pill-inst { background: #ede7f6; color: #5e35b1; }

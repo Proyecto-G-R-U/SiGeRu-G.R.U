@@ -48,6 +48,34 @@ EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
 -- ---------------------------------------------------------------------
+-- 1b) Capacidad del contenedor, en litros (requerimiento 3.1.4.2).
+--
+--     Sin este dato no hay forma de estimar el volumen recolectado.
+--     780 y 1100 son las capacidades de los contenedores plásticos que
+--     coloca la Intendencia; 2400 es la de los metálicos grandes.
+--     Los que ya existían quedan en 1100, que es la más común.
+-- ---------------------------------------------------------------------
+SET @hay_cap := (
+    SELECT COUNT(*)
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'contenedor'
+      AND COLUMN_NAME  = 'capacidad_litros'
+);
+
+SET @paso1b := IF(@hay_cap = 0,
+    'ALTER TABLE contenedor ADD COLUMN capacidad_litros INT NOT NULL DEFAULT 1100 AFTER zona',
+    'SELECT ''La columna contenedor.capacidad_litros ya existía: no se toca.'' AS aviso');
+
+PREPARE stmt FROM @paso1b;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+UPDATE contenedor SET capacidad_litros = 1100 WHERE codigo = 'CNT-102';
+UPDATE contenedor SET capacidad_litros = 2400 WHERE codigo = 'CNT-403';
+UPDATE contenedor SET capacidad_litros =  780 WHERE codigo = 'CNT-210';
+
+-- ---------------------------------------------------------------------
 -- 2) Zona de los contenedores de prueba que trae base.sql.
 --
 --    Son UPDATE por código, así que se pueden repetir sin problema.
@@ -80,6 +108,95 @@ UPDATE flota     SET zona = 'Municipio CH' WHERE zona = 'Zona Sur';
 
 UPDATE ruta      SET zona = 'Municipio CH' WHERE zona = 'Pocitos';
 UPDATE ruta      SET zona = 'Municipio E'  WHERE zona = 'Buceo';
+
+-- ---------------------------------------------------------------------
+-- 3b) Tabla de notificaciones, si todavía no está.
+--     CREATE TABLE IF NOT EXISTS sí existe en MySQL, así que acá no
+--     hace falta el rodeo de la sentencia preparada.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS notificacion (
+    id            INT AUTO_INCREMENT PRIMARY KEY,
+    usuario_id    INT NOT NULL,
+    tipo          ENUM('incidencia_nueva','incidencia_asignada','incidencia_resuelta','aviso')
+                      NOT NULL DEFAULT 'aviso',
+    titulo        VARCHAR(120) NOT NULL,
+    mensaje       VARCHAR(400) NOT NULL,
+    gravedad      ENUM('baja','media','alta') NOT NULL DEFAULT 'media',
+    incidencia_id INT NULL,
+    leida         TINYINT(1) NOT NULL DEFAULT 0,
+    fecha         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_notif_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuario(id) ON DELETE CASCADE,
+    CONSTRAINT fk_notif_incidencia
+        FOREIGN KEY (incidencia_id) REFERENCES incidencia(id) ON DELETE CASCADE,
+    INDEX idx_notif_usuario (usuario_id, leida)
+);
+
+-- ---------------------------------------------------------------------
+-- 3c) Zona de las instalaciones.
+--     Hace falta para que una incidencia sobre una planta o un vertedero
+--     aparezca en los informes por zona (3.1.4.1 y 3.1.4.3). Sin esto,
+--     esas incidencias caerían siempre en "Sin zona asignada".
+-- ---------------------------------------------------------------------
+SET @hay_izona := (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'instalacion' AND COLUMN_NAME = 'zona'
+);
+SET @p3c := IF(@hay_izona = 0,
+    'ALTER TABLE instalacion ADD COLUMN zona VARCHAR(80) NULL AFTER tipo',
+    'SELECT ''La columna instalacion.zona ya existía: no se toca.'' AS aviso');
+PREPARE stmt FROM @p3c; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+UPDATE instalacion SET zona = 'Municipio C' WHERE nombre = 'Centro de Acopio Centro';
+UPDATE instalacion SET zona = 'Municipio F' WHERE nombre = 'Planta Clasificadora Este';
+UPDATE instalacion SET zona = 'Municipio F' WHERE nombre = 'Vertedero Felipe Cardoso';
+
+-- ---------------------------------------------------------------------
+-- 3d) Incidencias sobre instalaciones (requerimiento 3.1.2.2.3).
+--
+--     Hasta ahora una incidencia SIEMPRE colgaba de un contenedor. Los
+--     operarios de clasificación necesitan reportar novedades sobre la
+--     planta donde trabajan, así que contenedor_id pasa a ser opcional y
+--     se agrega instalacion_id.
+--
+--     El CHECK del final es lo que impide que entre una incidencia
+--     huérfana (sin ninguno de los dos) o apuntando a las dos cosas.
+-- ---------------------------------------------------------------------
+
+-- contenedor_id deja de ser obligatorio. Repetir este MODIFY no hace daño.
+ALTER TABLE incidencia MODIFY contenedor_id INT NULL;
+
+SET @hay_inst := (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'incidencia' AND COLUMN_NAME = 'instalacion_id'
+);
+SET @p3d := IF(@hay_inst = 0,
+    'ALTER TABLE incidencia ADD COLUMN instalacion_id INT NULL AFTER contenedor_id',
+    'SELECT ''La columna incidencia.instalacion_id ya existía: no se toca.'' AS aviso');
+PREPARE stmt FROM @p3d; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @hay_fk := (
+    SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+    WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'incidencia'
+      AND CONSTRAINT_NAME = 'fk_incidencia_instalacion'
+);
+SET @p3e := IF(@hay_fk = 0,
+    'ALTER TABLE incidencia ADD CONSTRAINT fk_incidencia_instalacion
+        FOREIGN KEY (instalacion_id) REFERENCES instalacion(id) ON DELETE CASCADE',
+    'SELECT ''La clave foránea de instalación ya existía.'' AS aviso');
+PREPARE stmt FROM @p3e; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @hay_chk := (
+    SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+    WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'incidencia'
+      AND CONSTRAINT_NAME = 'chk_incidencia_objeto'
+);
+SET @p3f := IF(@hay_chk = 0,
+    'ALTER TABLE incidencia ADD CONSTRAINT chk_incidencia_objeto CHECK (
+        (contenedor_id IS NOT NULL AND instalacion_id IS NULL) OR
+        (contenedor_id IS NULL AND instalacion_id IS NOT NULL))',
+    'SELECT ''El CHECK de objetivo único ya existía.'' AS aviso');
+PREPARE stmt FROM @p3f; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- ---------------------------------------------------------------------
 -- 4) Comprobación. Tendrías que ver los contenedores con su municipio,

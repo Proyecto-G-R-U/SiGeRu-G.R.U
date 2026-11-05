@@ -26,7 +26,8 @@ class RepositorioContenedores extends RepositorioSql
             $f['lat'] !== null ? (float)$f['lat'] : null,
             $f['lng'] !== null ? (float)$f['lng'] : null,
             $f['nivel_llenado'] ?? 'vacio',
-            $f['zona'] ?? null
+            $f['zona'] ?? null,
+            isset($f['capacidad_litros']) ? (int)$f['capacidad_litros'] : Contenedor::CAPACIDAD_POR_DEFECTO
         );
     }
 
@@ -35,10 +36,10 @@ class RepositorioContenedores extends RepositorioSql
     public function agregar(Contenedor $c): void
     {
         $this->consulta(
-            'INSERT INTO contenedor (id, codigo, direccion, zona, tipo_residuo, estado, nivel_llenado, lat, lng)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [$c->getId(), $c->getCodigo(), $c->getDireccion(), $c->getZona(), $c->getTipoResiduo(),
-             $c->getEstado(), $c->getNivelLlenado(), $c->getLat(), $c->getLng()]
+            'INSERT INTO contenedor (id, codigo, direccion, zona, capacidad_litros, tipo_residuo, estado, nivel_llenado, lat, lng)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [$c->getId(), $c->getCodigo(), $c->getDireccion(), $c->getZona(), $c->getCapacidadLitros(),
+             $c->getTipoResiduo(), $c->getEstado(), $c->getNivelLlenado(), $c->getLat(), $c->getLng()]
         );
     }
 
@@ -46,9 +47,10 @@ class RepositorioContenedores extends RepositorioSql
     public function actualizar(Contenedor $c): bool
     {
         $this->consulta(
-            'UPDATE contenedor SET codigo = ?, direccion = ?, zona = ?, tipo_residuo = ?, estado = ?,
-                    nivel_llenado = ?, lat = ?, lng = ? WHERE id = ?',
-            [$c->getCodigo(), $c->getDireccion(), $c->getZona(), $c->getTipoResiduo(), $c->getEstado(),
+            'UPDATE contenedor SET codigo = ?, direccion = ?, zona = ?, capacidad_litros = ?,
+                    tipo_residuo = ?, estado = ?, nivel_llenado = ?, lat = ?, lng = ? WHERE id = ?',
+            [$c->getCodigo(), $c->getDireccion(), $c->getZona(), $c->getCapacidadLitros(),
+             $c->getTipoResiduo(), $c->getEstado(),
              $c->getNivelLlenado(), $c->getLat(), $c->getLng(), $c->getId()]
         );
         return $this->fila('SELECT id FROM contenedor WHERE id = ?', [$c->getId()]) !== null;

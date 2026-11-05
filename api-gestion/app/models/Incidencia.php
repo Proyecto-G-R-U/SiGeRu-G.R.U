@@ -19,7 +19,11 @@ namespace App\Models;
 class Incidencia implements \JsonSerializable
 {
     private int $id;
-    private int $contenedorId;
+    // Una incidencia refiere a un contenedor O a una instalación, nunca a
+    // las dos ni a ninguna. La base lo garantiza con un CHECK; acá se
+    // refleja dejando los dos campos opcionales y exponiendo getObjetivo().
+    private ?int $contenedorId;
+    private ?int $instalacionId;
     private string $tipo;        // 'rotura' | 'desborde' | 'falta_recoleccion' | 'otro'
     private string $descripcion;
     private string $gravedad;    // 'baja' | 'media' | 'alta'
@@ -32,7 +36,7 @@ class Incidencia implements \JsonSerializable
 
     public function __construct(
         int $id,
-        int $contenedorId,
+        ?int $contenedorId,
         string $tipo,
         string $descripcion,
         string $gravedad = 'media',
@@ -41,10 +45,12 @@ class Incidencia implements \JsonSerializable
         ?int $reportadoPor = null,
         string $reportadoPorNombre = '',
         string $fechaReporte = '',
-        ?string $fechaResolucion = null
+        ?string $fechaResolucion = null,
+        ?int $instalacionId = null
     ) {
         $this->id = $id;
         $this->contenedorId = $contenedorId;
+        $this->instalacionId = $instalacionId;
         $this->tipo = $tipo;
         $this->descripcion = $descripcion;
         $this->gravedad = $gravedad;
@@ -57,7 +63,14 @@ class Incidencia implements \JsonSerializable
     }
 
     public function getId(): int                  { return $this->id; }
-    public function getContenedorId(): int        { return $this->contenedorId; }
+    public function getContenedorId(): ?int       { return $this->contenedorId; }
+    public function getInstalacionId(): ?int      { return $this->instalacionId; }
+
+    /** 'contenedor' o 'instalacion': sobre qué se reportó. */
+    public function getObjetivo(): string
+    {
+        return $this->instalacionId !== null ? 'instalacion' : 'contenedor';
+    }
     public function getTipo(): string             { return $this->tipo; }
     public function getDescripcion(): string      { return $this->descripcion; }
     public function getGravedad(): string         { return $this->gravedad; }
@@ -92,13 +105,29 @@ class Incidencia implements \JsonSerializable
     // aparte (requerimiento 3.1.1.3.4).
     private ?string $zona = null;
     private ?string $contenedorCodigo = null;
+    private ?string $instalacionNombre = null;
 
-    public function getZona(): ?string             { return $this->zona; }
-    public function getContenedorCodigo(): ?string { return $this->contenedorCodigo; }
-    public function setDatosContenedor(?string $zona, ?string $codigo): void
+    public function getZona(): ?string              { return $this->zona; }
+    public function getContenedorCodigo(): ?string  { return $this->contenedorCodigo; }
+    public function getInstalacionNombre(): ?string { return $this->instalacionNombre; }
+
+    public function setDatosContenedor(?string $zona, ?string $codigo, ?string $instalacion = null): void
     {
         $this->zona = $zona;
         $this->contenedorCodigo = $codigo;
+        $this->instalacionNombre = $instalacion;
+    }
+
+    /**
+     * Cómo nombrar en pantalla aquello sobre lo que se reportó, sin que
+     * quien lo muestra tenga que saber si es contenedor o instalación.
+     */
+    public function getDondeLegible(): string
+    {
+        if ($this->instalacionId !== null) {
+            return $this->instalacionNombre ?? ('instalación #' . $this->instalacionId);
+        }
+        return $this->contenedorCodigo ?? ('contenedor #' . $this->contenedorId);
     }
 
     public function jsonSerialize(): array
@@ -107,6 +136,10 @@ class Incidencia implements \JsonSerializable
             'id'                 => $this->id,
             'zona'               => $this->zona,
             'contenedorCodigo'   => $this->contenedorCodigo,
+            'instalacionId'      => $this->instalacionId,
+            'instalacionNombre'  => $this->instalacionNombre,
+            'objetivo'           => $this->getObjetivo(),
+            'donde'              => $this->getDondeLegible(),
             'contenedorId'       => $this->contenedorId,
             'tipo'               => $this->tipo,
             'tipoLegible'        => $this->getTipoLegible(),

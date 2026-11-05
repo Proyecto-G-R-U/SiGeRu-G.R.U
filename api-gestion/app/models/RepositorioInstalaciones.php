@@ -24,10 +24,11 @@ class RepositorioInstalaciones extends RepositorioSql
         $lat = $f['lat'] !== null ? (float)$f['lat'] : null;
         $lng = $f['lng'] !== null ? (float)$f['lng'] : null;
         $ocu = (int)($f['ocupacion_actual'] ?? 0);
+        $zon = $f['zona'] ?? null;
         return match ($f['tipo']) {
-            'clasificacion' => new PlantaClasificacion($id, $f['nombre'], $f['direccion'], $cap, $f['tipo_residuo'], $f['estado'], $lat, $lng, $ocu),
-            'vertedero'     => new Vertedero($id, $f['nombre'], $f['direccion'], $cap, $f['tipo_residuo'], $f['estado'], $lat, $lng, $ocu),
-            default         => new CentroAcopio($id, $f['nombre'], $f['direccion'], $cap, $f['tipo_residuo'], $f['estado'], $lat, $lng, $ocu),
+            'clasificacion' => new PlantaClasificacion($id, $f['nombre'], $f['direccion'], $cap, $f['tipo_residuo'], $f['estado'], $lat, $lng, $ocu, $zon),
+            'vertedero'     => new Vertedero($id, $f['nombre'], $f['direccion'], $cap, $f['tipo_residuo'], $f['estado'], $lat, $lng, $ocu, $zon),
+            default         => new CentroAcopio($id, $f['nombre'], $f['direccion'], $cap, $f['tipo_residuo'], $f['estado'], $lat, $lng, $ocu, $zon),
         };
     }
 
@@ -36,9 +37,9 @@ class RepositorioInstalaciones extends RepositorioSql
     public function agregar(Instalacion $i): void
     {
         $this->consulta(
-            'INSERT INTO instalacion (id, nombre, direccion, tipo, capacidad_maxima, ocupacion_actual, tipo_residuo, estado, lat, lng)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [$i->getId(), $i->getNombre(), $i->getDireccion(), $i->getTipo(),
+            'INSERT INTO instalacion (id, nombre, direccion, tipo, zona, capacidad_maxima, ocupacion_actual, tipo_residuo, estado, lat, lng)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [$i->getId(), $i->getNombre(), $i->getDireccion(), $i->getTipo(), $i->getZona(),
              $i->getCapacidadMaxima(), $i->getOcupacionActual(), $i->getTipoResiduo(), $i->getEstado(),
              $i->getLat(), $i->getLng()]
         );
@@ -48,9 +49,9 @@ class RepositorioInstalaciones extends RepositorioSql
     public function actualizar(Instalacion $i): bool
     {
         $this->consulta(
-            'UPDATE instalacion SET nombre = ?, direccion = ?, tipo = ?, capacidad_maxima = ?,
+            'UPDATE instalacion SET nombre = ?, direccion = ?, tipo = ?, zona = ?, capacidad_maxima = ?,
                     ocupacion_actual = ?, tipo_residuo = ?, estado = ?, lat = ?, lng = ? WHERE id = ?',
-            [$i->getNombre(), $i->getDireccion(), $i->getTipo(), $i->getCapacidadMaxima(),
+            [$i->getNombre(), $i->getDireccion(), $i->getTipo(), $i->getZona(), $i->getCapacidadMaxima(),
              $i->getOcupacionActual(), $i->getTipoResiduo(), $i->getEstado(),
              $i->getLat(), $i->getLng(), $i->getId()]
         );

@@ -37,6 +37,7 @@ class ContenedorController extends ControladorBase
         $estado      = $datos['estado'] ?? 'operativo';
         $nivelLlenado = $datos['nivelLlenado'] ?? 'vacio';
         $zona = $this->leerZona($datos);
+        $capacidad = $this->leerCapacidad($datos);
         $lat = isset($datos['lat']) && $datos['lat'] !== '' && $datos['lat'] !== null ? (float)$datos['lat'] : null;
         $lng = isset($datos['lng']) && $datos['lng'] !== '' && $datos['lng'] !== null ? (float)$datos['lng'] : null;
 
@@ -56,7 +57,8 @@ class ContenedorController extends ControladorBase
             $lat,
             $lng,
             $nivelLlenado,
-            $zona
+            $zona,
+            $capacidad
         );
         $this->repo->agregar($contenedor);
 
@@ -92,6 +94,7 @@ class ContenedorController extends ControladorBase
         $estado      = $datos['estado'] ?? 'operativo';
         $nivelLlenado = $datos['nivelLlenado'] ?? 'vacio';
         $zona = $this->leerZona($datos);
+        $capacidad = $this->leerCapacidad($datos);
         $lat = isset($datos['lat']) && $datos['lat'] !== '' && $datos['lat'] !== null ? (float)$datos['lat'] : null;
         $lng = isset($datos['lng']) && $datos['lng'] !== '' && $datos['lng'] !== null ? (float)$datos['lng'] : null;
 
@@ -105,7 +108,7 @@ class ContenedorController extends ControladorBase
             $this->error('Marcá la ubicación del contenedor en el mapa.', 400);
         }
 
-        $contenedor = new Contenedor($id, $codigo, $direccion, $tipoResiduo, $estado, $lat, $lng, $nivelLlenado, $zona);
+        $contenedor = new Contenedor($id, $codigo, $direccion, $tipoResiduo, $estado, $lat, $lng, $nivelLlenado, $zona, $capacidad);
         if (!$this->repo->actualizar($contenedor)) {
             $this->error('No existe un contenedor con ese id.', 404);
         }
@@ -137,6 +140,23 @@ class ContenedorController extends ControladorBase
      * Un municipio inventado sí es un error: si entrara, rompería el
      * GROUP BY de los informes con zonas fantasma.
      */
+    /**
+     * Capacidad en litros. Si no viene, queda la más común (1100).
+     * Se valida contra la lista para que el informe de volumen no termine
+     * sumando capacidades inventadas.
+     */
+    private function leerCapacidad(array $datos): int
+    {
+        if (!isset($datos['capacidadLitros']) || $datos['capacidadLitros'] === '') {
+            return Contenedor::CAPACIDAD_POR_DEFECTO;
+        }
+        $cap = (int)$datos['capacidadLitros'];
+        if (!Contenedor::capacidadValida($cap)) {
+            $this->error('Capacidad inválida: ' . $cap . ' litros.', 400);
+        }
+        return $cap;
+    }
+
     private function leerZona(array $datos): ?string
     {
         $zona = trim((string)($datos['zona'] ?? ''));

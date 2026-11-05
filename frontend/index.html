@@ -54,6 +54,23 @@
         <header class="header">
             <span class="header-title" id="header-title">Panel</span>
             <div class="header-right">
+                <!-- Campana de notificaciones (punto "notificaciones o
+                     alertas" de la letra de la 3ra entrega). -->
+                <div class="campana-caja">
+                    <button class="campana" id="btn-campana" onclick="alternarNotificaciones()"
+                            title="Notificaciones">
+                        <span class="material-icons-outlined">notifications</span>
+                        <span class="campana-badge oculto" id="campana-badge">0</span>
+                    </button>
+                    <div class="notis-panel oculto" id="notis-panel">
+                        <div class="notis-cab">
+                            <span>Notificaciones</span>
+                            <button class="notis-todas" id="notis-todas"
+                                    onclick="marcarTodasLeidas()">Marcar todas</button>
+                        </div>
+                        <div class="notis-lista" id="notis-lista"></div>
+                    </div>
+                </div>
                 <span class="header-name" id="header-name"></span>
                 <span class="badge" id="header-badge"></span>
                 <button class="btn-salir" onclick="cerrarSesion()">
@@ -109,6 +126,20 @@
 
     // Texto de la zona para tablas y popups.
     function textoZona(z) { return z ? z : '—'; }
+
+    // Capacidades reales de los contenedores de la Intendencia, en litros.
+    // Son las que permiten estimar el volumen recolectado (req. 3.1.4.2).
+    // Tiene que coincidir con Contenedor::CAPACIDADES del lado del PHP.
+    const CAPACIDADES = [780, 1100, 2400];
+    const CAPACIDAD_DEFECTO = 1100;
+
+    function opcionesCapacidad(sel) {
+        const elegida = sel || CAPACIDAD_DEFECTO;
+        return CAPACIDADES.map(function (c) {
+            return '<option value="' + c + '"' + (c === elegida ? ' selected' : '') + '>'
+                 + c.toLocaleString('es-UY') + ' L</option>';
+        }).join('');
+    }
 
     // ---- Contornos de los municipios, para asignar la zona sola ----
     //
@@ -350,6 +381,7 @@
         // Armar menú y contenido según el rol
         construirMenu(rol);
         mostrarSeccion('inicio');
+        iniciarNotificaciones();
     }
 
     async function cerrarSesion() {
@@ -358,6 +390,7 @@
             await fetch(API_USUARIOS + '/logout', { method: 'POST', headers: cabeceras() });
         } catch (e) { /* si falla, igual limpiamos del lado del navegador */ }
         try { sessionStorage.removeItem('sigeru_token'); } catch (e) {}
+        detenerNotificaciones();
         usuarioActual = null;
         try { sessionStorage.removeItem('sigeru_usuario'); } catch (e) {}
         document.body.className = '';
@@ -391,8 +424,12 @@
             { id: 'incidencias', icono: 'report_problem', texto: 'Incidencias' },
         ];
 
-        // La guía de clasificación es para los vecinos (requerimiento 3.1.3.5).
-        if (rol === 'vecino') {
+        // La guía de clasificación la ven los vecinos (requerimiento 3.1.3.5)
+        // y también los operarios (3.1.2.2.4: "el sistema proporcionará
+        // información sobre la correcta clasificación de residuos según el
+        // tipo de contenedor"). Es el mismo contenido: lo que hay que saber
+        // sobre qué va en cada contenedor no cambia según quién lo lea.
+        if (rol === 'vecino' || rol === 'operario') {
             items.push({ id: 'guia', icono: 'menu_book', texto: 'Guía de reciclaje' });
         }
 
@@ -404,6 +441,7 @@
                 { id: 'flotas',       icono: 'grid_view',      texto: 'Flotas' },
                 { id: 'instalaciones', icono: 'factory',      texto: 'Instalaciones' },
                 { id: 'rutas',        icono: 'route',          texto: 'Rutas' },
+                { id: 'informes',     icono: 'insights',       texto: 'Informes' },
             );
         }
 
@@ -474,6 +512,7 @@
         if (id === 'incidencias')  { content.innerHTML = plantillaIncidencias();  cargarIncidencias(); }
         if (id === 'guia')         { content.innerHTML = plantillaGuia(); }
         if (id === 'rutas')        { content.innerHTML = plantillaRutas();       cargarRutas(); }
+        if (id === 'informes')     { content.innerHTML = plantillaInformes();    cargarInformes(); }
     }
 
     // Vuelve a dibujar la sección actual completa (tabla + selectores + mapa),
@@ -567,6 +606,7 @@
         + '<div><label>Dirección</label><input type="text" id="c-direccion" required></div>'
         + '<div><label>Zona (municipio)</label><select id="c-zona">' + opcionesZona('') + '</select>'
         + '<p class="zona-auto" id="c-zona-aviso">Se completa sola al marcar el punto en el mapa.</p></div>'
+        + '<div><label>Capacidad</label><select id="c-capacidad">' + opcionesCapacidad(null) + '</select></div>'
         + '<div><label>Tipo de residuo</label><select id="c-tipo">'
         + '<option value="mezclado">Mezclado</option>'
         + '<option value="reciclable">Reciclable</option></select></div>'
@@ -585,7 +625,7 @@
         + '<h2 class="sec-titulo">Contenedores en el mapa</h2>'
         + '<div id="mapa-listado" class="mapa mapa-grande"></div>'
         + '<table class="tabla"><thead><tr><th>ID</th><th>Código</th><th>Dirección</th>'
-        + '<th>Zona</th><th>Tipo</th><th>Estado</th><th>Llenado</th><th>Acción</th></tr></thead>'
+        + '<th>Zona</th><th>Capacidad</th><th>Tipo</th><th>Estado</th><th>Llenado</th><th>Acción</th></tr></thead>'
         + '<tbody id="tabla-contenedores"></tbody></table>';
     }
 
@@ -697,10 +737,19 @@
         + '<div class="panel">'
         + '<h3>Mapa de contenedores e incidencias</h3>'
         + '<p class="txt-muted" style="margin-bottom:10px">Hacé click en un contenedor del mapa '
-        + 'para seleccionarlo. Los contenedores con problemas reportados aparecen con un anillo rojo.</p>'
+        + 'para seleccionarlo. Los contenedores con problemas reportados aparecen con un anillo rojo. '
+        + 'Los cuadrados son los puntos de reciclaje: centros de acopio, plantas de clasificación '
+        + 'y vertederos, y también se pueden seleccionar para reportar una novedad sobre ellos.</p>'
+        + '<div class="leyenda">'
+        + '<span><i style="background:#2e7d32"></i> Contenedor operativo</span>'
+        + '<span><i style="background:#c62828"></i> Contenedor roto</span>'
+        + '<span><i class="lg-cuadro" style="background:#0d8ecf"></i> Centro de acopio</span>'
+        + '<span><i class="lg-cuadro" style="background:#8e24aa"></i> Planta de clasificación</span>'
+        + '<span><i class="lg-cuadro" style="background:#6d4c41"></i> Vertedero</span>'
+        + '</div>'
         + '<div id="mapa-incidencias" class="mapa mapa-grande"></div>'
         + '<div class="sel-contenedor">'
-        + '<span id="cont-elegido" class="txt-muted">Ningún contenedor seleccionado.</span>'
+        + '<span id="cont-elegido" class="txt-muted">Nada seleccionado todavía.</span>'
         + '<button class="btn" id="btn-reportar" onclick="abrirReporte()" disabled>Reportar problema</button>'
         + '</div></div>';
 
@@ -730,7 +779,7 @@
                  +   '<div><label>Agrupar por</label><select id="h-agrupar">'
                  +     '<option value="">Sin agrupar</option>'
                  +     '<option value="zona">Zona</option>'
-                 +     '<option value="contenedor">Contenedor</option></select></div>'
+                 +     '<option value="contenedor">Contenedor o instalación</option></select></div>'
                  + '</div>'
                  + '<div id="historial-resumen"></div>'
                  + '<div id="historial-incidencias"></div>';
@@ -760,6 +809,8 @@
         + '<option value="operativa">Operativa</option>'
         + '<option value="mantenimiento">Mantenimiento</option>'
         + '<option value="fuera_servicio">Fuera de servicio</option></select></div>'
+        + '<div><label>Zona (municipio)</label><select id="i-zona">' + opcionesZona('') + '</select>'
+        + '<p class="zona-auto" id="i-zona-aviso">Se completa sola al marcar el punto en el mapa.</p></div>'
         + '<div class="full"><label>Ubicación (hacé click en el mapa para marcarla)</label>'
         + '<div id="mapa-inst-crear" class="mapa"></div>'
         + '<p class="mapa-coord" id="i-coord">Sin ubicación seleccionada.</p></div>'
@@ -773,7 +824,7 @@
         + '</div>'
         + '<div id="mapa-inst-listado" class="mapa mapa-grande"></div>'
         + '<table class="tabla"><thead><tr><th>ID</th><th>Nombre</th><th>Tipo</th>'
-        + '<th>Dirección</th><th>Capacidad</th><th>Residuo</th><th>Estado</th>'
+        + '<th>Dirección</th><th>Zona</th><th>Capacidad</th><th>Residuo</th><th>Estado</th>'
         + '<th>Acción</th></tr></thead><tbody id="tabla-instalaciones"></tbody></table>'
         + '<h2 class="sec-titulo">Inventario por instalación</h2>'
         + '<div class="panel"><h3>Nuevo ítem de inventario</h3>'
@@ -1008,7 +1059,8 @@
             if (tbody) {
                 tbody.innerHTML = lista.map(function (c) {
                     return '<tr><td>' + c.id + '</td><td>' + c.codigo + '</td><td>' +
-                        c.direccion + '</td><td>' + textoZona(c.zona) + '</td><td>' + c.tipoResiduo + '</td><td>' +
+                        c.direccion + '</td><td>' + textoZona(c.zona) + '</td><td>' +
+                        (c.capacidadLitros || CAPACIDAD_DEFECTO).toLocaleString('es-UY') + ' L</td><td>' + c.tipoResiduo + '</td><td>' +
                         etiquetaIntegridad(c.estado) + '</td><td>' + etiquetaLlenado(c.nivelLlenado) + '</td><td>' +
                         '<button class="btn-editar" onclick="editarContenedor(' + c.id + ')">Editar</button> ' +
                         '<button class="btn-eliminar" onclick="eliminarContenedor(' + c.id + ')">Eliminar</button>' +
@@ -1031,7 +1083,7 @@
                 });
             }
         } catch (err) {
-            if (tbody) tbody.innerHTML = '<tr><td colspan="8">Error al conectar con API Gestión.</td></tr>';
+            if (tbody) tbody.innerHTML = '<tr><td colspan="9">Error al conectar con API Gestión.</td></tr>';
         }
     }
 
@@ -1047,6 +1099,7 @@
             codigo:      document.getElementById('c-codigo').value.trim(),
             direccion:   document.getElementById('c-direccion').value.trim(),
             zona:        document.getElementById('c-zona').value,
+            capacidadLitros: document.getElementById('c-capacidad').value,
             tipoResiduo: document.getElementById('c-tipo').value,
             estado:       document.getElementById('c-estado').value,
             nivelLlenado: document.getElementById('c-llenado').value,
@@ -2365,7 +2418,11 @@
     //  INCIDENCIAS (mapa para todos + gestión para el admin)
     // =============================================================
     let mapaInc = null, capaPinesInc = null;
-    let contenedorElegido = null;      // el contenedor clickeado en el mapa
+    // Lo seleccionado en el mapa para reportar: un contenedor O una
+    // instalación. Se guardan por separado y solo uno puede estar activo,
+    // igual que en la base, donde un CHECK garantiza lo mismo.
+    let contenedorElegido = null;
+    let instalacionElegida = null;
     let cacheContenedores = [];
     let cacheIncidencias = [];
 
@@ -2403,10 +2460,17 @@
         try {
             cacheContenedores = await (await fetchGet(API_GESTION + '/contenedores')).json();
             cacheIncidencias  = await (await fetchGet(API_GESTION + '/incidencias')).json();
+            // Los puntos de reciclaje van en el mismo mapa: el requerimiento
+            // 3.1.3.2 pide que el vecino vea "contenedores Y puntos de
+            // reciclaje", y de poco sirve saber dónde tirar algo reciclable
+            // si no se ve adónde llevarlo.
+            cacheInstalaciones = await (await fetchGet(API_GESTION + '/instalaciones')).json();
         } catch (err) { return; }
 
         if (!capaPinesInc) return;
         capaPinesInc.clearLayers();
+
+        dibujarPuntosDeReciclaje();
 
         cacheContenedores.forEach(function (c) {
             if (c.lat === null || c.lng === null) return;
@@ -2434,6 +2498,32 @@
         });
     }
 
+    // Puntos de reciclaje en el mapa del vecino (requerimiento 3.1.3.2).
+    // Se dibujan como cuadrados para que no se confundan con los
+    // contenedores, que son redondos, y no son clickeables para reportar:
+    // el botón de reportar sigue siendo solo para contenedores.
+    function dibujarPuntosDeReciclaje() {
+        if (!capaPinesInc || !cacheInstalaciones) return;
+        cacheInstalaciones.forEach(function (i) {
+            if (i.lat === null || i.lng === null) return;
+            const estado = i.estado === 'operativa' ? 'Operativa'
+                         : (i.estado === 'mantenimiento' ? 'En mantenimiento' : 'Fuera de servicio');
+            let popup = '<b>' + i.nombre + '</b><br>' + i.tipoLegible
+                      + '<br>' + i.direccion
+                      + '<br>Recibe: ' + (i.tipoResiduo === 'ambos' ? 'mezclado y reciclable' : i.tipoResiduo)
+                      + '<br>Estado: ' + estado;
+            if (i.estado !== 'operativa') {
+                popup += '<br><b style="color:#b45309">No está recibiendo material.</b>';
+            }
+            popup += '<br><i>Click en el pin para seleccionarla</i>';
+            const m = L.marker([i.lat, i.lng],
+                { icon: iconoInstalacion(colorTipoInstalacion(i.tipo), false) });
+            m.bindPopup(popup);
+            m.on('click', function () { elegirInstalacion(i.id); });
+            m.addTo(capaPinesInc);
+        });
+    }
+
     // Pin con anillo rojo si el contenedor tiene incidencias abiertas.
     function iconoPinIncidencia(color, conProblema) {
         const borde = conProblema ? '3px solid #c62828' : '2px solid #fff';
@@ -2450,11 +2540,25 @@
     // Al clickear un contenedor en el mapa queda seleccionado para reportar.
     function elegirContenedor(id) {
         contenedorElegido = id;
+        instalacionElegida = null;          // uno u otro, nunca los dos
         const c = cacheContenedores.find(function (x) { return x.id === id; });
+        if (c) marcarSeleccion(c.codigo + ' — ' + c.direccion);
+    }
+
+    // Seleccionar una instalación para reportar sobre ella
+    // (requerimiento 3.1.2.2.3).
+    function elegirInstalacion(id) {
+        instalacionElegida = id;
+        contenedorElegido = null;
+        const i = cacheInstalaciones.find(function (x) { return x.id === id; });
+        if (i) marcarSeleccion(i.nombre + ' — ' + i.tipoLegible);
+    }
+
+    function marcarSeleccion(texto) {
         const span = document.getElementById('cont-elegido');
         const btn  = document.getElementById('btn-reportar');
-        if (span && c) {
-            span.textContent = 'Seleccionado: ' + c.codigo + ' — ' + c.direccion;
+        if (span) {
+            span.textContent = 'Seleccionado: ' + texto;
             span.className = 'cont-ok';
         }
         if (btn) btn.disabled = false;
@@ -2462,11 +2566,23 @@
 
     // Modal para describir el problema.
     function abrirReporte() {
-        if (contenedorElegido === null) { alert('Elegí un contenedor en el mapa.'); return; }
-        const c = cacheContenedores.find(function (x) { return x.id === contenedorElegido; });
+        if (contenedorElegido === null && instalacionElegida === null) {
+            alert('Elegí un contenedor o una instalación en el mapa.');
+            return;
+        }
+        let rotulo = '', queEs = '';
+        if (instalacionElegida !== null) {
+            const i = cacheInstalaciones.find(function (x) { return x.id === instalacionElegida; });
+            queEs = 'Instalación';
+            rotulo = i ? i.nombre + ' — ' + i.tipoLegible : '';
+        } else {
+            const c = cacheContenedores.find(function (x) { return x.id === contenedorElegido; });
+            queEs = 'Contenedor';
+            rotulo = c ? c.codigo + ' — ' + c.direccion : '';
+        }
         const cuerpo =
             '<div class="form-modal">'
-            + '<p class="txt-muted">Contenedor: <b>' + (c ? c.codigo + ' — ' + c.direccion : '') + '</b></p>'
+            + '<p class="txt-muted">' + queEs + ': <b>' + rotulo + '</b></p>'
             + '<label>Tipo de problema</label><select id="r-tipo">'
             + '<option value="desborde">Desborde</option>'
             + '<option value="rotura">Rotura</option>'
@@ -2482,7 +2598,10 @@
 
         abrirModal('Reportar un problema', cuerpo, async function () {
             const datos = {
+                // Va uno u otro, nunca los dos: la API rechaza el pedido que
+                // mande ambos, y la base tiene un CHECK que lo impide igual.
                 contenedorId:       contenedorElegido,
+                instalacionId:      instalacionElegida,
                 tipo:               document.getElementById('r-tipo').value,
                 gravedad:           document.getElementById('r-gravedad').value,
                 descripcion:        document.getElementById('r-descripcion').value.trim(),
@@ -2523,8 +2642,15 @@
         }
 
         const filas = cacheIncidencias.map(function (i) {
-            const c = cacheContenedores.find(function (x) { return x.id === i.contenedorId; });
-            const cont_txt = c ? (c.codigo + ' — ' + c.direccion) : ('#' + i.contenedorId);
+            // La API ya resuelve si fue sobre un contenedor o una
+            // instalación y manda el nombre listo en 'donde'.
+            let cont_txt = i.donde || '';
+            if (i.objetivo === 'contenedor') {
+                const c = cacheContenedores.find(function (x) { return x.id === i.contenedorId; });
+                if (c) cont_txt = c.codigo + ' — ' + c.direccion;
+            } else {
+                cont_txt = '<span class="pill pill-inst">Instalación</span> ' + cont_txt;
+            }
 
             let acciones = '';
             if (esAdmin) {
@@ -2556,9 +2682,373 @@
         }).join('');
 
         cont.innerHTML = '<table class="tabla"><thead><tr><th>Gravedad</th><th>Tipo</th>' +
-            '<th>Contenedor</th><th>Descripción</th><th>Reportó</th><th>Fecha</th>' +
+            '<th>Dónde</th><th>Descripción</th><th>Reportó</th><th>Fecha</th>' +
             '<th>' + (esAdmin ? 'Gestión' : 'Estado') + '</th></tr></thead><tbody>' +
             filas + '</tbody></table>';
+    }
+
+
+
+    // ═══════════════════════════════════════════════════════════════
+    //  NOTIFICACIONES
+    // ═══════════════════════════════════════════════════════════════
+    // Avisos dentro del sistema, en la campana del encabezado. No hay
+    // mail ni push a propósito: el correo depende de un servidor SMTP
+    // que no se puede garantizar en una defensa, y el push necesita
+    // HTTPS y permiso del navegador.
+    //
+    // El navegador pregunta cada tanto si hay algo nuevo. No es la forma
+    // más elegante — lo elegante sería WebSockets — pero PHP sobre Apache
+    // no los sostiene sin montar otro servidor, y para avisos que no son
+    // urgentes al segundo, preguntar cada 45 s alcanza y sobra.
+
+    const NOTIS_CADA_MS = 45000;
+    let notisTimer = null;
+    let notisCache = [];
+
+    function iniciarNotificaciones() {
+        refrescarNotificaciones();
+        if (notisTimer) clearInterval(notisTimer);
+        notisTimer = setInterval(refrescarNotificaciones, NOTIS_CADA_MS);
+    }
+
+    function detenerNotificaciones() {
+        if (notisTimer) { clearInterval(notisTimer); notisTimer = null; }
+        notisCache = [];
+        const p = document.getElementById('notis-panel');
+        if (p) p.classList.add('oculto');
+    }
+
+    async function refrescarNotificaciones() {
+        try {
+            const resp = await fetchGet(API_GESTION + '/notificaciones');
+            if (!resp.ok) return;              // sin sesión o API caída: no molestamos
+            const d = await resp.json();
+            notisCache = d.notificaciones || [];
+            pintarBadge(d.noLeidas || 0);
+            pintarListaNotis();
+        } catch (e) { /* sin conexión: se reintenta en el próximo ciclo */ }
+    }
+
+    function pintarBadge(n) {
+        const b = document.getElementById('campana-badge');
+        if (!b) return;
+        b.textContent = n > 99 ? '99+' : n;
+        b.classList.toggle('oculto', n === 0);
+        const btn = document.getElementById('btn-campana');
+        if (btn) btn.classList.toggle('campana-activa', n > 0);
+    }
+
+    function haceCuanto(fecha) {
+        if (!fecha) return '';
+        const t = new Date(fecha.replace(' ', 'T'));
+        if (isNaN(t)) return fecha.substring(0, 16);
+        const min = Math.floor((Date.now() - t.getTime()) / 60000);
+        if (min < 1)   return 'recién';
+        if (min < 60)  return 'hace ' + min + ' min';
+        const h = Math.floor(min / 60);
+        if (h < 24)    return 'hace ' + h + ' h';
+        const d = Math.floor(h / 24);
+        if (d === 1)   return 'ayer';
+        if (d < 30)    return 'hace ' + d + ' días';
+        return fecha.substring(0, 10);
+    }
+
+    function pintarListaNotis() {
+        const cont = document.getElementById('notis-lista');
+        if (!cont) return;
+        if (notisCache.length === 0) {
+            cont.innerHTML = '<p class="notis-vacio">No tenés notificaciones.</p>';
+            return;
+        }
+        cont.innerHTML = notisCache.map(function (n) {
+            return '<div class="noti' + (n.leida ? '' : ' noti-nueva')
+                 + ' noti-' + n.gravedad + '" onclick="abrirNotificacion(' + n.id + ')">'
+                 + '<span class="material-icons-outlined noti-ico">' + n.icono + '</span>'
+                 + '<div class="noti-txt">'
+                 +   '<div class="noti-tit">' + n.titulo + '</div>'
+                 +   '<div class="noti-msg">' + n.mensaje + '</div>'
+                 +   '<div class="noti-fecha">' + haceCuanto(n.fecha) + '</div>'
+                 + '</div></div>';
+        }).join('');
+    }
+
+    function alternarNotificaciones() {
+        const p = document.getElementById('notis-panel');
+        if (!p) return;
+        const seAbre = p.classList.contains('oculto');
+        p.classList.toggle('oculto');
+        if (seAbre) refrescarNotificaciones();
+    }
+
+    // Al tocar una notificación se marca leída y, si refiere a una
+    // incidencia, lleva a la sección donde se la puede atender. Eso es lo
+    // que la vuelve útil: avisar sin llevar a ningún lado sería la mitad
+    // del trabajo.
+    async function abrirNotificacion(id) {
+        const n = notisCache.find(function (x) { return x.id === id; });
+        if (n && !n.leida) {
+            n.leida = true;                    // se refleja ya, sin esperar al servidor
+            pintarListaNotis();
+            try {
+                const resp = await fetch(API_GESTION + '/notificaciones/leer', {
+                    method: 'POST', headers: cabeceras(), body: JSON.stringify({ id: id }),
+                });
+                if (resp.ok) pintarBadge((await resp.json()).noLeidas || 0);
+            } catch (e) { /* queda marcada en pantalla; el próximo ciclo corrige */ }
+        }
+        if (n && n.incidenciaId) {
+            document.getElementById('notis-panel').classList.add('oculto');
+            mostrarSeccion('incidencias');
+        }
+    }
+
+    async function marcarTodasLeidas() {
+        try {
+            const resp = await fetch(API_GESTION + '/notificaciones/leer-todas', {
+                method: 'POST', headers: cabeceras(), body: JSON.stringify({}),
+            });
+            if (resp.ok) {
+                notisCache.forEach(function (n) { n.leida = true; });
+                pintarBadge(0);
+                pintarListaNotis();
+            }
+        } catch (e) { /* se reintenta solo en el próximo ciclo */ }
+    }
+
+    // Cerrar el panel al tocar fuera de él.
+    document.addEventListener('click', function (e) {
+        const caja = document.querySelector('.campana-caja');
+        const p = document.getElementById('notis-panel');
+        if (caja && p && !caja.contains(e.target)) p.classList.add('oculto');
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    //  INFORMES Y REPORTES (requerimientos 3.1.4.2 a 3.1.4.6)
+    // ═══════════════════════════════════════════════════════════════
+    // Solo para el administrador. Trae todo el tablero en un pedido y lo
+    // dibuja con barras de CSS: no hace falta una librería de gráficos
+    // para cuatro barras, y así la pantalla no suma una dependencia más.
+
+    function plantillaInformes() {
+        return ''
+        + '<h2 class="sec-titulo">Panel de control</h2>'
+        + '<div id="inf-kpis" class="kpis"><p class="txt-muted">Cargando…</p></div>'
+
+        + '<h2 class="sec-titulo">Volumen de residuos recolectados</h2>'
+        + '<div class="panel panel-param">'
+        +   '<div><label>Contenedores llenos al</label>'
+        +     '<input type="range" id="inf-factor" min="10" max="120" step="5" value="85">'
+        +     '<span id="inf-factor-txt">85%</span></div>'
+        +   '<div><label>Semanas del período</label>'
+        +     '<input type="number" id="inf-semanas" min="1" max="52" value="4"></div>'
+        +   '<p class="txt-muted">El volumen se calcula como <b>capacidad de los contenedores '
+        +   'de cada ruta × pasadas × factor de llenado</b>. Las capacidades son reales '
+        +   '(780, 1.100 y 2.400 L, las que usa la Intendencia); el factor de llenado es '
+        +   'el único valor simulado, y es este de acá.</p>'
+        + '</div>'
+        + '<div id="inf-volumen"></div>'
+
+        + '<h2 class="sec-titulo">Zonas críticas</h2>'
+        + '<p class="txt-muted">Ordenadas por cantidad de incidencias. La última columna '
+        + 'es la que permite comparar zonas de distinto tamaño: una con muchos puntos '
+        + 'atendidos va a tener más incidencias sin ser peor. Un punto es un contenedor '
+        + 'o una instalación.</p>'
+        + '<div id="inf-zonas"></div>'
+
+        + '<h2 class="sec-titulo">Tiempo de resolución por cuadrilla</h2>'
+        + '<p class="txt-muted">Sobre las incidencias ya resueltas, midiendo desde que se '
+        + 'reportan hasta que se cierran.</p>'
+        + '<div id="inf-cuadrillas"></div>'
+
+        + '<h2 class="sec-titulo">Exportar</h2>'
+        + '<p class="txt-muted">Archivos CSV, que abre cualquier planilla de cálculo '
+        + '(requerimiento 3.1.4.6).</p>'
+        + '<div class="exportar">'
+        +   '<button class="btn" onclick="exportarInforme(\'zonas\')">Zonas críticas</button> '
+        +   '<button class="btn" onclick="exportarInforme(\'volumen\')">Volumen por zona</button> '
+        +   '<button class="btn" onclick="exportarInforme(\'cuadrillas\')">Tiempos por cuadrilla</button>'
+        + '</div><p class="msg" id="inf-msg"></p>';
+    }
+
+    function nAr(n) { return (n === null || n === undefined) ? '—' : Number(n).toLocaleString('es-UY'); }
+
+    // Barras horizontales proporcionales al mayor valor de la serie.
+    function barras(items, etiqueta, valor, texto) {
+        if (items.length === 0) return '<p class="flota-vacia">Todavía no hay datos.</p>';
+        const max = Math.max.apply(null, items.map(valor));
+        return '<div class="resumen-zonas">' + items.map(function (it) {
+            const v = valor(it);
+            const pct = max > 0 ? Math.round(100 * v / max) : 0;
+            return '<div class="rz-item">'
+                 + '<span class="rz-nombre">' + etiqueta(it) + '</span>'
+                 + '<span class="rz-barra"><i style="width:' + pct + '%"></i></span>'
+                 + '<span class="rz-total rz-ancho">' + texto(it) + '</span></div>';
+        }).join('') + '</div>';
+    }
+
+    function pintarKpis(k) {
+        const cont = document.getElementById('inf-kpis');
+        if (!cont) return;
+        const tarjeta = function (rot, val, pie, clase) {
+            return '<div class="kpi-card ' + (clase || '') + '">'
+                 + '<div class="kpi-rot">' + rot + '</div>'
+                 + '<div class="kpi-val">' + val + '</div>'
+                 + '<div class="kpi-pie">' + pie + '</div></div>';
+        };
+        cont.innerHTML =
+            tarjeta('Contenedores', nAr(k.contenedores),
+                    k.contenedoresRotos + ' rotos · ' + k.contenedoresDesbordados + ' desbordados',
+                    k.contenedoresRotos > 0 ? 'kpi-warn' : '')
+          + tarjeta('Incidencias sin resolver', nAr(k.incidenciasAbiertas + k.incidenciasEnCurso),
+                    k.gravesAbiertas + ' de gravedad alta',
+                    k.gravesAbiertas > 0 ? 'kpi-bad' : 'kpi-ok')
+          + tarjeta('Tasa de resolución',
+                    k.tasaResolucion === null ? '—' : k.tasaResolucion + '%',
+                    nAr(k.incidenciasResueltas) + ' de ' + nAr(k.incidencias) + ' resueltas', '')
+          + tarjeta('Tiempo promedio',
+                    k.horasPromedioResolucion === null ? '—' : k.horasPromedioResolucion + ' h',
+                    'desde el reporte hasta el cierre', '')
+          + tarjeta('Volumen estimado', nAr(k.volumenM3) + ' m³',
+                    'en ' + k.semanas + ' semana' + (k.semanas === 1 ? '' : 's')
+                    + ' · ' + nAr(k.volumenLitros) + ' L', '')
+          + tarjeta('Cobertura', k.zonasCubiertas + ' de 8',
+                    'municipios con contenedores'
+                    + (k.contenedoresSinZona > 0 ? ' · ' + k.contenedoresSinZona + ' sin zona' : ''),
+                    k.contenedoresSinZona > 0 ? 'kpi-warn' : '');
+    }
+
+    function pintarVolumen(lista, k) {
+        const cont = document.getElementById('inf-volumen');
+        if (!cont) return;
+        if (lista.length === 0) {
+            cont.innerHTML = '<p class="flota-vacia">No hay rutas con contenedores asignados, '
+                           + 'así que no hay volumen que estimar. Armá una ruta en la sección Rutas.</p>';
+            return;
+        }
+        const total = lista.reduce(function (a, z) { return a + z.litros; }, 0);
+        cont.innerHTML = barras(lista,
+            function (z) { return z.zona; },
+            function (z) { return z.litros; },
+            function (z) { return nAr(z.metrosCubicos) + ' m³'; })
+          + '<table class="tabla"><thead><tr><th>Zona</th><th>Contenedores</th>'
+          + '<th>Litros por pasada</th><th>Pasadas</th><th>Litros</th><th>m³</th></tr></thead><tbody>'
+          + lista.map(function (z) {
+              return '<tr><td>' + z.zona + '</td><td>' + z.contenedores + '</td><td>'
+                   + nAr(z.litrosPorPasada) + '</td><td>' + z.pasadas + '</td><td>'
+                   + nAr(z.litros) + '</td><td>' + nAr(z.metrosCubicos) + '</td></tr>';
+          }).join('')
+          + '<tr class="fila-total"><td><b>Total</b></td><td></td><td></td><td></td><td><b>'
+          + nAr(total) + '</b></td><td><b>' + nAr(Math.round(total / 10) / 100) + '</b></td></tr>'
+          + '</tbody></table>';
+    }
+
+    function pintarZonas(lista) {
+        const cont = document.getElementById('inf-zonas');
+        if (!cont) return;
+        if (lista.length === 0) { cont.innerHTML = '<p class="flota-vacia">Sin datos.</p>'; return; }
+        cont.innerHTML = barras(lista,
+            function (z) { return z.zona; },
+            function (z) { return z.total; },
+            function (z) { return z.total + ''; })
+          + '<table class="tabla"><thead><tr><th>Zona</th><th>Contenedores</th>'
+          + '<th>Instalaciones</th><th>Incidencias</th><th>Sin resolver</th><th>Graves</th>'
+          + '<th>Por punto</th></tr></thead><tbody>'
+          + lista.map(function (z) {
+              return '<tr><td>' + z.zona + '</td><td>' + z.contenedores + '</td><td>'
+                   + z.instalaciones + '</td><td>'
+                   + z.total + '</td><td>' + z.abiertas + '</td><td>' + z.graves + '</td><td>'
+                   + z.porPunto + '</td></tr>';
+          }).join('') + '</tbody></table>';
+    }
+
+    function pintarCuadrillas(lista) {
+        const cont = document.getElementById('inf-cuadrillas');
+        if (!cont) return;
+        if (lista.length === 0) {
+            cont.innerHTML = '<p class="flota-vacia">Todavía no hay incidencias resueltas, '
+                           + 'así que no hay tiempos que promediar.</p>';
+            return;
+        }
+        cont.innerHTML = barras(lista,
+            function (c) { return c.cuadrilla; },
+            function (c) { return c.horasPromedio; },
+            function (c) { return c.horasPromedio + ' h'; })
+          + '<table class="tabla"><thead><tr><th>Cuadrilla</th><th>Resueltas</th>'
+          + '<th>Promedio</th><th>Más rápida</th><th>Más lenta</th><th>Graves</th>'
+          + '</tr></thead><tbody>'
+          + lista.map(function (c) {
+              return '<tr><td>' + c.cuadrilla + '</td><td>' + c.resueltas + '</td><td>'
+                   + c.horasPromedio + ' h</td><td>' + c.horasMin + ' h</td><td>'
+                   + c.horasMax + ' h</td><td>' + c.graves + '</td></tr>';
+          }).join('') + '</tbody></table>';
+    }
+
+    async function cargarInformes() {
+        const f = document.getElementById('inf-factor');
+        const sem = document.getElementById('inf-semanas');
+        if (f && f.dataset.enganchado !== '1') {
+            f.addEventListener('input', function () {
+                document.getElementById('inf-factor-txt').textContent = f.value + '%';
+            });
+            f.addEventListener('change', cargarInformes);
+            sem.addEventListener('change', cargarInformes);
+            f.dataset.enganchado = '1';
+        }
+        const factor = f ? (parseInt(f.value, 10) / 100) : 0.85;
+        const semanas = sem ? sem.value : 4;
+
+        try {
+            const resp = await fetchGet(API_GESTION + '/informes?factor=' + factor + '&semanas=' + semanas);
+            const d = await resp.json();
+            if (!resp.ok) {
+                document.getElementById('inf-kpis').innerHTML =
+                    '<p class="flota-vacia">' + (d.error || 'No se pudo cargar.') + '</p>';
+                return;
+            }
+            pintarKpis(d.indicadores);
+            pintarVolumen(d.volumenZona, d.indicadores);
+            pintarZonas(d.zonasCriticas);
+            pintarCuadrillas(d.cuadrillas);
+        } catch (e) {
+            document.getElementById('inf-kpis').innerHTML =
+                '<p class="flota-vacia">Error al conectar con API Gestión.</p>';
+        }
+    }
+
+    // La descarga no puede ser un link común: el CSV va detrás del token,
+    // que viaja en una cabecera. Se pide con fetch y se arma la descarga
+    // desde el blob que vuelve.
+    async function exportarInforme(tipo) {
+        const msg = document.getElementById('inf-msg');
+        msg.className = 'msg';
+        msg.textContent = 'Generando el archivo…';
+        const f = document.getElementById('inf-factor');
+        const sem = document.getElementById('inf-semanas');
+        const q = '?tipo=' + tipo
+                + '&factor=' + (f ? parseInt(f.value, 10) / 100 : 0.85)
+                + '&semanas=' + (sem ? sem.value : 4);
+        try {
+            const resp = await fetch(API_GESTION + '/informes/exportar' + q, { headers: cabeceras() });
+            if (!resp.ok) {
+                let e = 'No se pudo generar el archivo.';
+                try { e = (await resp.json()).error || e; } catch (x) {}
+                msg.textContent = e; msg.classList.add('err');
+                return;
+            }
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'sigeru-' + tipo + '-' + new Date().toISOString().substring(0, 10) + '.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            msg.textContent = 'Archivo descargado.'; msg.classList.add('ok');
+        } catch (e) {
+            msg.textContent = 'Error de conexión.'; msg.classList.add('err');
+        }
     }
 
     // ---- Historial de incidencias, filtrable y agrupable (req. 3.1.1.3.4) ----
@@ -2616,7 +3106,9 @@
 
     function filaHistorial(i, agrupar) {
         const cuad = i.cuadrillaId ? nombreCuadrilla(i.cuadrillaId) : '—';
-        const cod  = i.contenedorCodigo || ('#' + i.contenedorId);
+        const cod  = i.objetivo === 'instalacion'
+            ? '<span class="pill pill-inst">Inst.</span> ' + (i.instalacionNombre || ('#' + i.instalacionId))
+            : (i.contenedorCodigo || ('#' + i.contenedorId));
         let celdas = '<td>' + pillGravedad(i.gravedad) + '</td><td>' + i.tipoLegible + '</td>';
         // Al agrupar, la columna del criterio sobra: ya está en el encabezado.
         if (agrupar !== 'zona')       celdas += '<td>' + textoZona(i.zona) + '</td>';
@@ -2637,7 +3129,7 @@
     function encabezadoHistorial(agrupar) {
         let th = '<th>Gravedad</th><th>Tipo</th>';
         if (agrupar !== 'zona')       th += '<th>Zona</th>';
-        if (agrupar !== 'contenedor') th += '<th>Contenedor</th>';
+        if (agrupar !== 'contenedor') th += '<th>Dónde</th>';
         th += '<th>Descripción</th><th>Cuadrilla</th><th>Estado</th>'
            +  '<th>Reportada</th><th>Resuelta</th>';
         return '<thead><tr>' + th + '</tr></thead>';
@@ -2656,7 +3148,7 @@
         lista.forEach(function (i) {
             const clave = agrupar === 'zona'
                 ? (i.zona || 'Sin zona asignada')
-                : ((i.contenedorCodigo || ('#' + i.contenedorId)));
+                : (i.donde || 'Sin identificar');
             (grupos[clave] = grupos[clave] || []).push(i);
         });
         return Object.keys(grupos)
@@ -2802,6 +3294,11 @@
                         const c = document.getElementById('i-coord');
                         if (c) c.textContent = 'Ubicación: ' +
                             e.latlng.lat.toFixed(5) + ', ' + e.latlng.lng.toFixed(5);
+                        // Mismo cálculo que en los contenedores: el municipio
+                        // sale del punto marcado (requerimiento 3.1.4.3, para
+                        // que las incidencias sobre instalaciones entren en
+                        // los informes por zona).
+                        aplicarZonaAuto('i-zona', 'i-zona-aviso', e.latlng.lat, e.latlng.lng);
                     });
                 }
                 // Mapa con todas las instalaciones.
@@ -2824,7 +3321,7 @@
             cacheInstalaciones = await (await fetchGet(API_GESTION + '/instalaciones')).json();
             tbody.innerHTML = cacheInstalaciones.map(function (i) {
                 return '<tr><td>' + i.id + '</td><td>' + i.nombre + '</td><td>' +
-                    i.tipoLegible + '</td><td>' + i.direccion + '</td><td>' +
+                    i.tipoLegible + '</td><td>' + i.direccion + '</td><td>' + textoZona(i.zona) + '</td><td>' +
                     i.capacidadMaxima + ' t</td><td>' + i.tipoResiduo + '</td><td>' +
                     etiquetaEstado(i.estado) + '</td><td>' +
                     '<button class="btn-editar" onclick="editarInstalacion(' + i.id + ')">Editar</button> ' +
@@ -2894,6 +3391,7 @@
             nombre:          document.getElementById('i-nombre').value.trim(),
             direccion:       document.getElementById('i-direccion').value.trim(),
             tipo:            document.getElementById('i-tipo').value,
+            zona:            document.getElementById('i-zona').value,
             capacidadMaxima: document.getElementById('i-capacidad').value,
             tipoResiduo:     document.getElementById('i-residuo').value,
             estado:          document.getElementById('i-estado').value,
@@ -3116,6 +3614,7 @@
                 + '<label>Dirección</label><input type="text" id="e-direccion" value="' + (c.direccion || '') + '">'
                 + '<label>Zona (municipio)</label><select id="e-zona">' + opcionesZona(c.zona) + '</select>'
                 + '<p class="zona-auto" id="e-zona-aviso">Si movés el punto en el mapa, la zona se recalcula.</p>'
+                + '<label>Capacidad</label><select id="e-capacidad">' + opcionesCapacidad(c.capacidadLitros) + '</select>'
                 + '<label>Tipo de residuo</label><select id="e-tipo">'
                 + '<option value="mezclado"' + (c.tipoResiduo === 'mezclado' ? ' selected' : '') + '>Mezclado</option>'
                 + '<option value="reciclable"' + (c.tipoResiduo === 'reciclable' ? ' selected' : '') + '>Reciclable</option></select>'
@@ -3137,6 +3636,7 @@
                     codigo: document.getElementById('e-codigo').value.trim(),
                     direccion: document.getElementById('e-direccion').value.trim(),
                     zona: document.getElementById('e-zona').value,
+                    capacidadLitros: document.getElementById('e-capacidad').value,
                     tipoResiduo: document.getElementById('e-tipo').value,
                     estado: document.getElementById('e-estado').value,
                     nivelLlenado: document.getElementById('e-llenado').value,
@@ -3234,6 +3734,8 @@
             + '<option value="operativa"' + sel(i.estado, 'operativa') + '>Operativa</option>'
             + '<option value="mantenimiento"' + sel(i.estado, 'mantenimiento') + '>Mantenimiento</option>'
             + '<option value="fuera_servicio"' + sel(i.estado, 'fuera_servicio') + '>Fuera de servicio</option></select>'
+            + '<label>Zona (municipio)</label><select id="e-izona">' + opcionesZona(i.zona) + '</select>'
+            + '<p class="zona-auto" id="e-izona-aviso">Si movés el punto en el mapa, la zona se recalcula.</p>'
             + '<label>Ubicación (click en el mapa para cambiarla)</label>'
             + '<div id="modal-mapa-inst" class="mapa"></div>'
             + '<p class="mapa-coord" id="e-icoord">Ubicación actual: ' + i.lat + ', ' + i.lng + '</p>'
@@ -3248,6 +3750,7 @@
                 nombre:          document.getElementById('e-inombre').value.trim(),
                 direccion:       document.getElementById('e-idireccion').value.trim(),
                 tipo:            document.getElementById('e-itipo').value,
+                zona:            document.getElementById('e-izona').value,
                 capacidadMaxima: document.getElementById('e-icapacidad').value,
                 tipoResiduo:     document.getElementById('e-iresiduo').value,
                 estado:          document.getElementById('e-iestado').value,
@@ -3283,6 +3786,7 @@
                     else modalMarcadorInst = L.marker(e.latlng).addTo(modalMapaInst);
                     document.getElementById('e-icoord').textContent =
                         'Nueva ubicación: ' + e.latlng.lat.toFixed(5) + ', ' + e.latlng.lng.toFixed(5);
+                    aplicarZonaAuto('e-izona', 'e-izona-aviso', e.latlng.lat, e.latlng.lng);
                 });
                 setTimeout(function () { modalMapaInst.invalidateSize(); }, 200);
             }, 100);

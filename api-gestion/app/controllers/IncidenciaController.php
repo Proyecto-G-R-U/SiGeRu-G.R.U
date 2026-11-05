@@ -4,6 +4,8 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Models\RepositorioIncidencias;
+use App\Models\RepositorioNotificaciones;
+use App\Models\RepositorioInstalaciones;
 use App\Models\RepositorioContenedores;
 use App\Models\Incidencia;
 
@@ -22,11 +24,19 @@ class IncidenciaController extends ControladorBase
 {
     private RepositorioIncidencias $repo;
     private RepositorioContenedores $repoContenedores;
+    private RepositorioNotificaciones $notis;
+    private RepositorioInstalaciones $repoInstalaciones;
 
-    public function __construct(RepositorioIncidencias $repo, RepositorioContenedores $repoContenedores)
-    {
+    public function __construct(
+        RepositorioIncidencias $repo,
+        RepositorioContenedores $repoContenedores,
+        RepositorioNotificaciones $notis,
+        RepositorioInstalaciones $repoInstalaciones
+    ) {
         $this->repo = $repo;
         $this->repoContenedores = $repoContenedores;
+        $this->notis = $notis;
+        $this->repoInstalaciones = $repoInstalaciones;
     }
 
     /** Incidencias activas (las que se dibujan en el mapa). */
@@ -89,7 +99,8 @@ class IncidenciaController extends ControladorBase
     {
         $this->exigirLogin();
         $datos = $this->leerJson();
-        $contenedorId = (int)($datos['contenedorId'] ?? 0);
+        $contenedorId  = (int)($datos['contenedorId'] ?? 0);
+        $instalacionId = (int)($datos['instalacionId'] ?? 0);
         $tipo         = $datos['tipo'] ?? 'otro';
         $descripcion  = trim($datos['descripcion'] ?? '');
         $gravedad     = $datos['gravedad'] ?? 'media';
@@ -97,11 +108,23 @@ class IncidenciaController extends ControladorBase
             ? (int)$datos['reportadoPor'] : null;
         $reportadoPorNombre = trim($datos['reportadoPorNombre'] ?? 'Anónimo');
 
-        if ($contenedorId <= 0) {
-            $this->error('Elegí un contenedor en el mapa antes de reportar.', 400);
+        // Una incidencia refiere a un contenedor O a una instalación, nunca
+        // a las dos ni a ninguna. Los operarios de recolección reportan
+        // sobre contenedores (3.1.2.1.3) y los de clasificación sobre las
+        // instalaciones donde trabajan (3.1.2.2.3). La base lo garantiza con
+        // un CHECK; acá se valida antes para poder dar un error entendible
+        // en vez de un 500 del motor.
+        if ($contenedorId <= 0 && $instalacionId <= 0) {
+            $this->error('Elegí un contenedor o una instalación en el mapa antes de reportar.', 400);
         }
-        if ($this->repoContenedores->buscarPorId($contenedorId) === null) {
+        if ($contenedorId > 0 && $instalacionId > 0) {
+            $this->error('Una incidencia refiere a un contenedor o a una instalación, no a las dos.', 400);
+        }
+        if ($contenedorId > 0 && $this->repoContenedores->buscarPorId($contenedorId) === null) {
             $this->error('El contenedor indicado no existe.', 404);
+        }
+        if ($instalacionId > 0 && $this->repoInstalaciones->buscarPorId($instalacionId) === null) {
+            $this->error('La instalación indicada no existe.', 404);
         }
         if ($descripcion === '') {
             $this->error('Escribí una breve descripción del problema.', 400);
@@ -109,16 +132,32 @@ class IncidenciaController extends ControladorBase
 
         $incidencia = new Incidencia(
             $this->repo->proximoId(),
-            $contenedorId,
+            $contenedorId > 0 ? $contenedorId : null,
             $tipo,
             $descripcion,
             $gravedad,
             'abierta',              // toda incidencia nace abierta
             null,                   // sin cuadrilla hasta que el admin asigne
             $reportadoPor,
-            $reportadoPorNombre
+            $reportadoPorNombre,
+            '',
+            null,
+            $instalacionId > 0 ? $instalacionId : null
         );
         $this->repo->agregar($incidencia);
+
+        // Aviso a los administradores: alguien tiene que verla y asignarla.
+        // Se excluye a quien la reportó, si resulta ser admin: no tiene
+        // sentido notificarle algo que acaba de hacer él mismo.
+        $donde = $this->nombrarObjetivo($contenedorId, $instalacionId);
+        $this->notis->avisarAAdmins(
+            'incidencia_nueva',
+            $gravedad === 'alta' ? 'Incidencia grave sin asignar' : 'Incidencia nueva',
+            $incidencia->getTipoLegible() . ' en ' . $donde . '. Reportó ' . $reportadoPorNombre . '.',
+            $gravedad,
+            $incidencia->getId(),
+            $reportadoPor
+        );
 
         $this->responder(['mensaje' => 'Incidencia reportada. Gracias por avisar.'], 201);
     }
@@ -141,8 +180,24 @@ class IncidenciaController extends ControladorBase
         if (!in_array($estado, ['abierta', 'en_curso', 'resuelta'], true)) {
             $this->error('Estado inválido.', 400);
         }
+        // Se lee ANTES de cambiarla, para saber quién la reportó.
+        $antes = $this->repo->buscarPorId($id);
+
         if (!$this->repo->cambiarEstado($id, $estado)) {
             $this->error('No existe una incidencia con ese id.', 404);
+        }
+
+        // Al resolverse, se le avisa a quien la reportó, si fue un usuario
+        // registrado. Los reportes anónimos no tienen a quién avisarle.
+        if ($estado === 'resuelta' && $antes !== null && $antes->getReportadoPor() !== null) {
+            $this->notis->crear(
+                $antes->getReportadoPor(),
+                'incidencia_resuelta',
+                'Resolvieron lo que reportaste',
+                'Tu reporte de ' . mb_strtolower($antes->getTipoLegible()) . ' fue marcado como resuelto. Gracias por avisar.',
+                'baja',
+                $id
+            );
         }
 
         $this->responder(['mensaje' => 'Estado actualizado.'], 200);
@@ -164,7 +219,28 @@ class IncidenciaController extends ControladorBase
             $this->error('No existe una incidencia con ese id.', 404);
         }
 
-        $this->responder(['mensaje' => 'Cuadrilla responsable asignada.'], 200);
+        // Aviso a la cuadrilla. Solo al asignar: si se quita la cuadrilla
+        // ($cuadrillaId null) no hay a quién avisarle.
+        $avisados = 0;
+        if ($cuadrillaId !== null) {
+            $inc = $this->repo->buscarPorId($id);
+            $donde = $inc !== null
+                ? $this->nombrarObjetivo((int)$inc->getContenedorId(), (int)$inc->getInstalacionId())
+                : 'el objetivo indicado';
+            $avisados = $this->notis->avisarACuadrilla(
+                $cuadrillaId,
+                'incidencia_asignada',
+                'Les asignaron una incidencia',
+                ($inc !== null ? $inc->getTipoLegible() : 'Incidencia') . ' en ' . $donde . '.',
+                $inc !== null ? $inc->getGravedad() : 'media',
+                $id
+            );
+        }
+
+        $this->responder([
+            'mensaje'  => 'Cuadrilla responsable asignada.',
+            'avisados' => $avisados,
+        ], 200);
     }
 
     public function eliminar(): void
@@ -179,5 +255,23 @@ class IncidenciaController extends ControladorBase
             $this->error('No existe una incidencia con ese id.', 404);
         }
         $this->responder(['mensaje' => 'Incidencia eliminada.'], 200);
+    }
+
+    /**
+     * Cómo nombrar en un aviso aquello sobre lo que se reportó, sin que
+     * quien arma el mensaje tenga que saber si es contenedor o instalación.
+     */
+    private function nombrarObjetivo(int $contenedorId, int $instalacionId): string
+    {
+        if ($instalacionId > 0) {
+            $i = $this->repoInstalaciones->buscarPorId($instalacionId);
+            return $i !== null
+                ? $i->getNombre() . ' (' . $i->getDireccion() . ')'
+                : 'instalación #' . $instalacionId;
+        }
+        $c = $this->repoContenedores->buscarPorId($contenedorId);
+        return $c !== null
+            ? $c->getCodigo() . ' (' . $c->getDireccion() . ')'
+            : 'contenedor #' . $contenedorId;
     }
 }

@@ -44,6 +44,7 @@ CREATE TABLE instalacion (
     nombre           VARCHAR(120) NOT NULL,
     direccion        VARCHAR(180) NOT NULL,
     tipo             ENUM('acopio','clasificacion','vertedero') NOT NULL,
+    zona             VARCHAR(80)  NULL,                 -- municipio, igual que el contenedor
     capacidad_maxima INT NOT NULL,                     -- tope en toneladas
     ocupacion_actual INT NOT NULL DEFAULT 0,           -- toneladas ocupadas actualmente
     tipo_residuo     ENUM('mezclado','reciclable','ambos') NOT NULL DEFAULT 'mezclado',
@@ -83,6 +84,7 @@ CREATE TABLE contenedor (
     codigo       VARCHAR(20)  NOT NULL UNIQUE,
     direccion    VARCHAR(200) NOT NULL,
     zona         VARCHAR(80)  NULL,                                        -- municipio al que pertenece (req. 3.1.1.3.4, 3.1.4.1, 3.1.4.3)
+    capacidad_litros INT NOT NULL DEFAULT 1100,                            -- 780 / 1100 / 2400: las que usa la IM (req. 3.1.4.2)
     tipo_residuo ENUM('mezclado','reciclable') NOT NULL,
     estado        ENUM('operativo','roto') NOT NULL DEFAULT 'operativo',   -- integridad física
     nivel_llenado ENUM('vacio','lleno','desbordado') NOT NULL DEFAULT 'vacio', -- cuánto tiene
@@ -130,9 +132,15 @@ CREATE TABLE maquinaria (
 -- seguimiento (estado, cuadrilla responsable) hasta resolverla.
 -- Al resolverse sale del mapa activo y queda en el historial.
 -- ------------------------------------------------------------
+-- Una incidencia refiere a UN contenedor O a UNA instalación, nunca a las
+-- dos ni a ninguna. Los operarios de recolección reportan sobre contenedores
+-- (req. 3.1.2.1.3) y los de clasificación sobre las instalaciones donde
+-- trabajan (req. 3.1.2.2.3). El CHECK de abajo impide que entre una
+-- incidencia huérfana o apuntando a dos cosas a la vez.
 CREATE TABLE incidencia (
     id                   INT AUTO_INCREMENT PRIMARY KEY,
-    contenedor_id        INT NOT NULL,
+    contenedor_id        INT NULL,
+    instalacion_id       INT NULL,
     tipo                 ENUM('rotura','desborde','falta_recoleccion','otro') NOT NULL DEFAULT 'otro',
     descripcion          TEXT NOT NULL,
     gravedad             ENUM('baja','media','alta') NOT NULL DEFAULT 'media',
@@ -144,8 +152,14 @@ CREATE TABLE incidencia (
     fecha_resolucion     DATETIME NULL,
     CONSTRAINT fk_incidencia_contenedor
         FOREIGN KEY (contenedor_id) REFERENCES contenedor(id) ON DELETE CASCADE,
+    CONSTRAINT fk_incidencia_instalacion
+        FOREIGN KEY (instalacion_id) REFERENCES instalacion(id) ON DELETE CASCADE,
     CONSTRAINT fk_incidencia_cuadrilla
-        FOREIGN KEY (cuadrilla_id) REFERENCES cuadrilla(id) ON DELETE SET NULL
+        FOREIGN KEY (cuadrilla_id) REFERENCES cuadrilla(id) ON DELETE SET NULL,
+    CONSTRAINT chk_incidencia_objeto CHECK (
+        (contenedor_id IS NOT NULL AND instalacion_id IS NULL) OR
+        (contenedor_id IS NULL AND instalacion_id IS NOT NULL)
+    )
 );
 
 
@@ -153,6 +167,34 @@ CREATE TABLE incidencia (
 -- RUTA — recorrido de recolección que la administración asigna a
 -- una cuadrilla (requerimiento 3.1.2.1.1).
 -- ------------------------------------------------------------
+-- ============================================================
+--  NOTIFICACIONES
+--  Avisos dentro del sistema: no hay mail ni push, el usuario los
+--  ve en la campana del encabezado. Una fila por destinatario, no
+--  por evento: si a una cuadrilla de tres se le asigna una
+--  incidencia se crean tres notificaciones, y cada operario marca
+--  la suya como leída sin afectar a los demás.
+-- ============================================================
+CREATE TABLE notificacion (
+    id            INT AUTO_INCREMENT PRIMARY KEY,
+    usuario_id    INT NOT NULL,                      -- a quién le llega
+    tipo          ENUM('incidencia_nueva','incidencia_asignada','incidencia_resuelta','aviso')
+                      NOT NULL DEFAULT 'aviso',
+    titulo        VARCHAR(120) NOT NULL,
+    mensaje       VARCHAR(400) NOT NULL,
+    gravedad      ENUM('baja','media','alta') NOT NULL DEFAULT 'media',
+    incidencia_id INT NULL,                          -- a qué incidencia refiere, si aplica
+    leida         TINYINT(1) NOT NULL DEFAULT 0,
+    fecha         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_notif_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuario(id) ON DELETE CASCADE,
+    -- Si se borra la incidencia, el aviso sobre ella deja de tener sentido:
+    -- se va con ella en vez de quedar apuntando a la nada.
+    CONSTRAINT fk_notif_incidencia
+        FOREIGN KEY (incidencia_id) REFERENCES incidencia(id) ON DELETE CASCADE,
+    INDEX idx_notif_usuario (usuario_id, leida)
+);
+
 CREATE TABLE ruta (
     id           INT AUTO_INCREMENT PRIMARY KEY,
     nombre       VARCHAR(120) NOT NULL,
@@ -198,20 +240,20 @@ INSERT INTO flota (id, nombre, zona) VALUES
 INSERT INTO cuadrilla (id, nombre, zona) VALUES
     (1, 'Cuadrilla Norte', 'Municipio C');
 
-INSERT INTO contenedor (id, codigo, direccion, zona, tipo_residuo, estado, nivel_llenado, lat, lng) VALUES
-    (1, 'CNT-102', 'Av. Italia y Bulevar Artigas', 'Municipio CH', 'reciclable', 'operativo', 'vacio',      -34.9020, -56.1550),
-    (2, 'CNT-403', 'Rambla Rep. de México, Malvín','Municipio E',  'mezclado',   'operativo', 'desbordado', -34.8920, -56.1150),
-    (3, 'CNT-210', 'Pocitos, 26 de Marzo',         'Municipio CH', 'reciclable', 'roto',      'lleno',      -34.9095, -56.1520);
+INSERT INTO contenedor (id, codigo, direccion, zona, capacidad_litros, tipo_residuo, estado, nivel_llenado, lat, lng) VALUES
+    (1, 'CNT-102', 'Av. Italia y Bulevar Artigas', 'Municipio CH', 1100, 'reciclable', 'operativo', 'vacio',      -34.9020, -56.1550),
+    (2, 'CNT-403', 'Rambla Rep. de México, Malvín','Municipio E',  2400, 'mezclado',   'operativo', 'desbordado', -34.8920, -56.1150),
+    (3, 'CNT-210', 'Pocitos, 26 de Marzo',         'Municipio CH',  780, 'reciclable', 'roto',      'lleno',      -34.9095, -56.1520);
 
 INSERT INTO camion (id, patente, modelo, estado, disponibilidad, flota_id, cuadrilla_id) VALUES
     (1, 'STP 1234', 'Volvo FE',       'operativo',     'en_ruta',    1, 1),
     (2, 'STP 5678', 'Mercedes Atego', 'operativo',     'disponible', 1, NULL),
     (3, 'STP 9012', 'Iveco Tector',   'mantenimiento', 'disponible', 2, NULL);
 
-INSERT INTO instalacion (id, nombre, direccion, tipo, capacidad_maxima, ocupacion_actual, tipo_residuo, estado, lat, lng) VALUES
-    (1, 'Centro de Acopio Centro',   'Av. Rondeau 1580',         'acopio',        150,  40, 'reciclable', 'operativa', -34.8890, -56.1880),
-    (2, 'Planta Clasificadora Este', 'Camino Maldonado 5400',    'clasificacion', 300, 185, 'ambos',      'operativa', -34.8450, -56.1050),
-    (3, 'Vertedero Felipe Cardoso',  'Camino Felipe Cardoso s/n','vertedero',     900, 720, 'mezclado',   'operativa', -34.8280, -56.0910);
+INSERT INTO instalacion (id, nombre, direccion, tipo, zona, capacidad_maxima, ocupacion_actual, tipo_residuo, estado, lat, lng) VALUES
+    (1, 'Centro de Acopio Centro',   'Av. Rondeau 1580',         'acopio',        'Municipio C', 150,  40, 'reciclable', 'operativa', -34.8890, -56.1880),
+    (2, 'Planta Clasificadora Este', 'Camino Maldonado 5400',    'clasificacion', 'Municipio F', 300, 185, 'ambos',      'operativa', -34.8450, -56.1050),
+    (3, 'Vertedero Felipe Cardoso',  'Camino Felipe Cardoso s/n','vertedero',     'Municipio F', 900, 720, 'mezclado',   'operativa', -34.8280, -56.0910);
 
 INSERT INTO maquinaria (id, nombre, categoria, estado, cantidad, instalacion_id) VALUES
     (1, 'Cinta transportadora',      'maquinaria',  'operativa',     1, 2),
@@ -232,3 +274,86 @@ INSERT INTO ruta_contenedor (ruta_id, contenedor_id, orden) VALUES
     (1, 3, 1),
     (1, 1, 2),
     (2, 2, 1);
+
+-- ============================================================
+--  RECOLECCIONES (requerimiento 3.1.4.2)
+--
+--  Cada fila es un recorrido hecho: qué ruta, qué día y cuántos
+--  kilos se levantaron. La zona no se repite acá: sale de ruta.zona
+--  con un JOIN, igual que en las incidencias.
+--
+--  Los kilos son SIMULADOS, como pide el propio requerimiento
+--  ("basado en datos simulados"). Se generaron una sola vez con una
+--  semilla fija a partir de la cantidad de contenedores de cada ruta,
+--  con variación semanal de ±18% y una leve suba estacional. No se
+--  calculan al vuelo: son filas de verdad, así el informe hace una
+--  agregación real y el día que se carguen recolecciones reales la
+--  consulta no cambia.
+--
+--  Cubren de mayo a octubre de 2026, una salida por semana por ruta.
+-- ============================================================
+
+CREATE TABLE recoleccion (
+    id        INT AUTO_INCREMENT PRIMARY KEY,
+    ruta_id   INT NOT NULL,
+    fecha     DATE NOT NULL,
+    kilos     DECIMAL(10,2) NOT NULL,
+    camion_id INT NULL,
+    CONSTRAINT fk_recoleccion_ruta
+        FOREIGN KEY (ruta_id) REFERENCES ruta(id) ON DELETE CASCADE,
+    CONSTRAINT fk_recoleccion_camion
+        FOREIGN KEY (camion_id) REFERENCES camion(id) ON DELETE SET NULL
+);
+
+INSERT INTO recoleccion (id, ruta_id, fecha, kilos, camion_id) VALUES
+    (1, 1, '2026-05-04', 1069.98, 1),
+    (2, 2, '2026-05-05', 344.05, NULL),
+    (3, 1, '2026-05-11', 1241.12, 1),
+    (4, 2, '2026-05-12', 365.76, NULL),
+    (5, 1, '2026-05-18', 1245.28, 1),
+    (6, 2, '2026-05-19', 311.52, NULL),
+    (7, 1, '2026-05-25', 1400.7, 1),
+    (8, 2, '2026-05-26', 262.72, NULL),
+    (9, 1, '2026-06-01', 1062.62, 1),
+    (10, 2, '2026-06-02', 292.19, NULL),
+    (11, 1, '2026-06-08', 1116.47, 1),
+    (12, 2, '2026-06-09', 316.41, NULL),
+    (13, 1, '2026-06-15', 1285.1, 1),
+    (14, 2, '2026-06-16', 286.8, NULL),
+    (15, 1, '2026-06-22', 1265.25, 1),
+    (16, 2, '2026-06-23', 305.25, NULL),
+    (17, 1, '2026-06-29', 1366.5, 1),
+    (18, 2, '2026-06-30', 352.01, NULL),
+    (19, 1, '2026-07-06', 1261.34, 1),
+    (20, 2, '2026-07-07', 332.76, NULL),
+    (21, 1, '2026-07-13', 1342.91, 1),
+    (22, 2, '2026-07-14', 318.64, NULL),
+    (23, 1, '2026-07-20', 1359.69, 1),
+    (24, 2, '2026-07-21', 256.96, NULL),
+    (25, 1, '2026-07-27', 1352.06, 1),
+    (26, 2, '2026-07-28', 333.53, NULL),
+    (27, 1, '2026-08-03', 1278.62, 1),
+    (28, 2, '2026-08-04', 294.77, NULL),
+    (29, 1, '2026-08-10', 1123.91, 1),
+    (30, 2, '2026-08-11', 301.32, NULL),
+    (31, 1, '2026-08-17', 1290.98, 1),
+    (32, 2, '2026-08-18', 298.7, NULL),
+    (33, 1, '2026-08-24', 1066.23, 1),
+    (34, 2, '2026-08-25', 319.57, NULL),
+    (35, 1, '2026-08-31', 1381.4, 1),
+    (36, 2, '2026-09-01', 309.83, NULL),
+    (37, 1, '2026-09-07', 1217.53, 1),
+    (38, 2, '2026-09-08', 267.2, NULL),
+    (39, 1, '2026-09-14', 1380.51, 1),
+    (40, 2, '2026-09-15', 310.71, NULL),
+    (41, 1, '2026-09-21', 1322.66, 1),
+    (42, 2, '2026-09-22', 337.92, NULL),
+    (43, 1, '2026-09-28', 1320.08, 1),
+    (44, 2, '2026-09-29', 321.18, NULL),
+    (45, 1, '2026-10-05', 1166.18, 1),
+    (46, 2, '2026-10-06', 324.45, NULL),
+    (47, 1, '2026-10-12', 1185.53, 1),
+    (48, 2, '2026-10-13', 374.34, NULL),
+    (49, 1, '2026-10-19', 1526.94, 1),
+    (50, 2, '2026-10-20', 297.22, NULL),
+    (51, 1, '2026-10-26', 1503.23, 1);

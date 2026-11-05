@@ -26,6 +26,7 @@ abstract class Instalacion implements \JsonSerializable
     protected string $estado;         // 'operativa' | 'mantenimiento' | 'fuera_servicio'
     protected ?float $lat;            // ubicación exacta para el mapa
     protected ?float $lng;
+    protected ?string $zona;          // municipio, para los informes por zona
 
     public function __construct(
         int $id,
@@ -36,7 +37,8 @@ abstract class Instalacion implements \JsonSerializable
         string $estado = 'operativa',
         ?float $lat = null,
         ?float $lng = null,
-        int $ocupacionActual = 0
+        int $ocupacionActual = 0,
+        ?string $zona = null
     ) {
         $this->id = $id;
         $this->nombre = $nombre;
@@ -47,6 +49,7 @@ abstract class Instalacion implements \JsonSerializable
         $this->lat = $lat;
         $this->lng = $lng;
         $this->ocupacionActual = $ocupacionActual;
+        $this->zona = $zona;
     }
 
     /** Cada subclase define qué tipo de instalación es. */
@@ -71,6 +74,7 @@ abstract class Instalacion implements \JsonSerializable
     public function getEstado(): string       { return $this->estado; }
     public function getLat(): ?float          { return $this->lat; }
     public function getLng(): ?float          { return $this->lng; }
+    public function getZona(): ?string        { return $this->zona; }
 
     public function setNombre(string $n): void      { $this->nombre = $n; }
     public function setDireccion(string $d): void   { $this->direccion = $d; }
@@ -80,6 +84,7 @@ abstract class Instalacion implements \JsonSerializable
     public function setEstado(string $e): void      { $this->estado = $e; }
     public function setLat(?float $l): void         { $this->lat = $l; }
     public function setLng(?float $l): void         { $this->lng = $l; }
+    public function setZona(?string $z): void       { $this->zona = $z; }
 
     public function jsonSerialize(): array
     {
@@ -96,6 +101,7 @@ abstract class Instalacion implements \JsonSerializable
             'estado'          => $this->estado,
             'lat'             => $this->lat,
             'lng'             => $this->lng,
+            'zona'            => $this->zona,
         ];
     }
 }

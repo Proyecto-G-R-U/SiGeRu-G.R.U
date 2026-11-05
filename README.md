@@ -63,7 +63,7 @@ const usuarios = await resp.json();
 ## Endpoints (REST)
 
 - API Usuarios:    `POST /login`, `POST /usuarios`, `GET /usuarios`
-- API Gestión:     `GET /contenedores`, `POST /contenedores`, `GET /contenedores/zonas`
+- API Gestión:     `GET /contenedores`, `POST /contenedores`, `GET /contenedores/zonas`, `GET /informes`, `GET /notificaciones`
 - API Recolección: `GET /camiones`, `POST /camiones`
 
 ## Cuentas de prueba (contraseña: `1234`)
@@ -341,7 +341,7 @@ entidad, el ciclo completo de una incidencia, las reglas de exclusividad y la
 integridad referencial. Se importa en Postman y se corre con el Collection
 Runner. Las pruebas limpian lo que crean.
 
-**Pruebas unitarias en PHP** — 81 comprobaciones sobre la lógica del backend.
+**Pruebas unitarias en PHP** — 129 comprobaciones sobre la lógica del backend.
 
 Ejecutar:
     php tests/correr-tests.php
@@ -656,3 +656,294 @@ críticas (3.1.4.3): ya está escrita y probada.
   la API: agrupación por zona y por contenedor, los totales, el orden y la
   lista vacía.
 - Las **81 pruebas unitarias** del proyecto siguen pasando.
+
+
+## INFORMES Y PANEL DE CONTROL (3ra entrega)
+
+Sección **Informes**, solo para el administrador. Cubre los requerimientos
+**3.1.4.2 a 3.1.4.6** y los puntos "informes simples" y "panel de control con
+estadísticas" de la letra.
+
+### 3.1.4.2 — Volumen de residuos recolectados
+
+El requerimiento pide **volumen**, no peso. Eso es una suerte: trabajando en
+litros se evita la densidad de la basura, que es el número difícil de
+defender (varía entre 100 y 150 kg/m³ según cuán compactada esté).
+
+Para poder calcularlo hizo falta un dato que no estaba: **`capacidad_litros`
+en `contenedor`**, con las capacidades reales que usa la Intendencia — 780 y
+1.100 L los plásticos, 2.400 L los metálicos grandes. Por defecto 1.100, que
+es la más común.
+
+La cuenta es:
+
+```
+litros por pasada   = suma de la capacidad de los contenedores de la ruta
+volumen del período = litros por pasada × pasadas × factor de llenado
+```
+
+Cada ruta corre un día de la semana, así que en N semanas hace N pasadas.
+
+**El único valor simulado es el factor de llenado**, y está a la vista en la
+pantalla con un deslizador, no escondido en el código. Eso es exactamente lo
+que el requerimiento llama "datos simulados": todo lo demás sale de datos
+cargados en el sistema. Para la defensa queda un argumento sólido — cada
+litro del informe es rastreable hasta un contenedor concreto con una
+capacidad que existe en la calle, y el único supuesto está declarado en
+pantalla y se puede mover.
+
+Si un contenedor está en dos rutas se cuenta dos veces, y está bien: se
+recolecta dos veces.
+
+### 3.1.4.3 — Zonas críticas
+
+No alcanza con contar incidencias: una zona con 200 contenedores va a tener
+más que una con 20 sin ser peor. Por eso la tabla trae además cuántos
+contenedores tiene cada zona y el promedio de **incidencias por contenedor**,
+que es la cifra comparable. Las zonas sin incidencias aparecen igual, en 0:
+que una zona no tenga problemas es información, no un motivo para ocultarla.
+
+### 3.1.4.4 — Tiempo de resolución por cuadrilla
+
+Sale de restar `fecha_reporte` a `fecha_resolucion`, dos campos que el sistema
+ya venía guardando. Solo cuentan las resueltas: una incidencia todavía abierta
+no tiene tiempo de resolución, y promediarla como cero ensuciaría el número.
+Las resueltas sin cuadrilla asignada se agrupan aparte en lugar de
+descartarse, porque son trabajo que igual se hizo.
+
+### 3.1.4.5 — Panel de control
+
+Seis indicadores arriba de la pantalla: contenedores y cuántos están rotos o
+desbordados, incidencias sin resolver y cuántas son graves, tasa de
+resolución, tiempo promedio, volumen estimado y cobertura por municipio. Las
+tarjetas se pintan de ámbar o rojo cuando el número lo amerita.
+
+Los gráficos son **barras hechas con CSS**. Para cuatro barras no hace falta
+una librería de gráficos, y así la pantalla no suma otra dependencia externa.
+
+### 3.1.4.6 — Exportación
+
+Tres botones que bajan un CSV: zonas críticas, volumen por zona y tiempos por
+cuadrilla. CSV porque lo abre cualquier planilla sin instalar nada.
+
+Dos detalles que parecen menores y no lo son: el separador es **punto y
+coma**, que es lo que espera Excel en español, y el archivo arranca con un
+**BOM**, sin el cual Excel rompe los acentos.
+
+La descarga no puede ser un link común, porque el CSV va detrás del token y
+el token viaja en una cabecera. Se pide con `fetch` y se arma la descarga
+desde el blob que vuelve.
+
+### Dónde vive
+
+`RepositorioInformes` e `InformeController`, en **api-gestión**. Lee tablas de
+los tres microservicios (`contenedor` e `incidencia` son de Gestión, `ruta` y
+`ruta_contenedor` de Recolección, `cuadrilla` de Usuarios). Es el mismo
+criterio que ya seguía `RepositorioCuadrillas`: las APIs no se llaman entre
+ellas, leen la base compartida.
+
+Endpoints nuevos:
+
+```
+GET /informes?factor=0.85&semanas=4
+GET /informes/exportar?tipo=zonas|volumen|cuadrillas
+```
+
+Los dos exigen rol administrador: devuelven **401** sin token y **403** con
+token de vecino u operario. El factor se acota entre 0,1 y 1,2 y las semanas
+entre 1 y 52; fuera de rango responden **400**. Sin esos límites el informe
+mostraría cifras absurdas con cara de dato real.
+
+### Qué se probó
+
+- **53 comprobaciones contra MySQL**, con los totales calculados a mano a
+  partir de los datos sembrados y no leídos de la propia consulta. Incluye
+  que el factor y las semanas muevan el número en la proporción correcta,
+  que la suma por ruta coincida con la suma por zona, y el caso de base
+  vacía (el promedio tiene que dar `null`, no 0, para no afirmar que se
+  resuelve todo en cero horas).
+- **9 comprobaciones por HTTP** contra el endpoint real con token de
+  administrador, más la validación de parámetros, el 401 sin token y el 403
+  con token de vecino.
+- **Los tres CSV descargados y verificados**: BOM presente, parseo correcto
+  con separador `;` y la suma de la columna de litros coincidiendo con el
+  total del panel.
+- Las **95 pruebas unitarias** del proyecto en verde.
+
+
+## NOTIFICACIONES (3ra entrega)
+
+Cubre el punto **"sistema de notificaciones o alertas"** de la letra. Ningún
+requerimiento funcional lo detalla, así que la forma la eligió el equipo.
+
+### Qué se eligió y por qué
+
+Avisos **dentro del sistema**, en una campana en el encabezado, con un
+contador de no leídas. Nada de mail ni de push, y es una decisión, no una
+limitación:
+
+- El **correo** necesita un servidor SMTP. En una defensa, con la red de la
+  escuela, es exactamente la clase de cosa que falla en el peor momento.
+- El **push** del navegador exige HTTPS y que el usuario acepte un permiso.
+  XAMPP sirve por HTTP.
+
+La campana funciona en cualquier escenario y se puede mostrar en vivo.
+
+### Qué dispara un aviso
+
+| Cuándo | A quién | Tipo |
+|---|---|---|
+| Se reporta una incidencia | A todos los administradores, menos a quien la reportó | `incidencia_nueva` |
+| Se asigna una cuadrilla | A todos los operarios de esa cuadrilla | `incidencia_asignada` |
+| Se resuelve | A quien la reportó, si estaba registrado | `incidencia_resuelta` |
+
+Si la incidencia es de gravedad alta, el aviso al administrador cambia de
+título a "Incidencia grave sin asignar" y la fila se marca en rojo.
+
+Quitar la cuadrilla de una incidencia no genera avisos: no hay a quién
+avisarle. Y un reporte anónimo no tiene destinatario al resolverse, así que
+simplemente no se crea nada — no es un error.
+
+### Cómo está hecho
+
+Tabla `notificacion` con **una fila por destinatario, no por evento**. Si a
+una cuadrilla de tres se le asigna una incidencia se crean tres
+notificaciones, y cada operario marca la suya como leída sin afectar a los
+demás. La alternativa — una fila por evento y una tabla de lecturas — es más
+normalizada pero bastante más código para el mismo resultado.
+
+Las claves foráneas son `ON DELETE CASCADE` en los dos lados: si se borra el
+usuario se van sus avisos, y si se borra la incidencia se va el aviso sobre
+ella en vez de quedar apuntando a la nada.
+
+**El punto de seguridad.** El id del usuario **nunca** se toma del cuerpo del
+pedido: sale del token. Y `marcarLeida()` lleva el usuario en el `WHERE`
+además del id de la notificación, así que mandar un id ajeno devuelve **404**
+en lugar de marcarla. Hay una prueba que lo hace y verifica que la
+notificación del otro siga sin leer.
+
+**Sobre el sondeo.** El navegador pregunta cada 45 segundos si hay algo
+nuevo, y además al abrir la campana. No es lo más elegante — lo elegante
+serían WebSockets — pero PHP sobre Apache no los sostiene sin montar otro
+servidor, y para avisos que no son urgentes al segundo, preguntar cada 45 s
+alcanza. Si la API no responde, el ciclo no muestra ningún error: reintenta
+en la vuelta siguiente.
+
+Tocar una notificación la marca leída **y lleva a la sección de Incidencias**
+si refiere a una. Avisar sin llevar a ningún lado sería la mitad del trabajo.
+
+Endpoints:
+
+```
+GET  /notificaciones?soloNoLeidas=1
+POST /notificaciones/leer           { "id": 12 }
+POST /notificaciones/leer-todas
+```
+
+Los tres responden **401** sin token. Devuelven el contador de no leídas en
+la misma respuesta, para que la campana no tenga que hacer un segundo pedido.
+
+### Qué se probó
+
+- **15 comprobaciones del flujo completo por HTTP**, con cuatro sesiones
+  abiertas a la vez: el vecino reporta y le llega solo al admin; el admin
+  asigna y les llega a los dos integrantes de la cuadrilla y a nadie más;
+  se resuelve y le llega al vecino. Más que quitar la cuadrilla no genere
+  avisos y que un reporte anónimo no rompa nada al resolverse.
+- **10 comprobaciones de permisos**: que cada usuario vea únicamente
+  notificaciones con su propio `usuarioId`; que marcar una ajena devuelva
+  404 y la deje sin leer; que "marcar todas" no toque las de otro; y que
+  marcar dos veces la misma siga respondiendo 200.
+- **21 comprobaciones del frontend** cargando el JavaScript real de
+  `index.html`, incluidas las de `haceCuanto()` con fechas inválidas y
+  vacías.
+- Las **111 pruebas unitarias** del proyecto en verde.
+
+
+## TRES ARREGLOS DE REQUERIMIENTOS (3ra entrega)
+
+### 3.1.2.2.4 — Guía de clasificación para los operarios
+
+El requerimiento pide que el sistema informe sobre la correcta clasificación
+de residuos según el tipo de contenedor. La guía ya existía completa, pero
+estaba restringida a los vecinos en una línea del menú. Ahora la ven también
+los operarios: lo que hay que saber sobre qué va en cada contenedor no cambia
+según quién lo lea.
+
+### 3.1.3.2 — Puntos de reciclaje en el mapa del vecino
+
+El mapa de la sección Incidencias dibujaba solo los contenedores. Ahora
+dibuja también las instalaciones: centros de acopio, plantas de clasificación
+y vertederos, cada uno con su color y su popup. Se distinguen por la forma —
+los contenedores son redondos y los puntos de reciclaje cuadrados — y hay una
+leyenda arriba del mapa.
+
+De poco sirve saber dónde tirar algo reciclable si no se ve adónde llevarlo.
+
+### 3.1.2.2.3 — Incidencias sobre instalaciones
+
+Este era el más grande de los tres, porque arrastró más de lo que parecía.
+
+**El problema.** La tabla `incidencia` tenía `contenedor_id NOT NULL`: una
+incidencia siempre colgaba de un contenedor. Los operarios de clasificación
+no tenían forma de reportar que la cinta de la planta se frenó.
+
+**La solución.** `contenedor_id` pasa a ser opcional y se agrega
+`instalacion_id`, con un CHECK que garantiza que haya **exactamente uno**:
+
+```sql
+CONSTRAINT chk_incidencia_objeto CHECK (
+    (contenedor_id IS NOT NULL AND instalacion_id IS NULL) OR
+    (contenedor_id IS NULL AND instalacion_id IS NOT NULL)
+)
+```
+
+El CHECK no es decorativo: sin él, un error de programación podría dejar
+incidencias huérfanas o apuntando a dos cosas a la vez, y eso recién se
+notaría cuando un informe diera mal. El controlador valida lo mismo antes de
+llegar a la base, pero para dar un **400** entendible en vez de un 500 del
+motor.
+
+**Lo que arrastró.** Tres cosas que no eran obvias de entrada:
+
+1. **Las instalaciones necesitaban zona.** Si no, una incidencia sobre una
+   planta caería siempre en "Sin zona asignada" en los informes. Se agregó
+   `instalacion.zona`, y se completa sola al marcar el punto en el mapa,
+   igual que en los contenedores.
+
+2. **Los JOIN tenían que dejar de ser JOIN.** Todas las consultas del
+   historial y de los informes unían con `contenedor`. Con un JOIN común, las
+   incidencias sobre instalaciones habrían desaparecido de las listas sin que
+   nadie se entere. Ahora son `LEFT JOIN` a las dos tablas y la zona sale de
+   la que corresponda: `COALESCE(c.zona, ins.zona)`.
+
+3. **El informe de zonas críticas tenía un error de fondo.** Armaba la lista
+   de zonas desde `contenedor`, así que un municipio que solo tiene una
+   planta no aparecía en el informe, y sus incidencias se perdían en el
+   camino. Lo encontró una prueba, no la vista. Ahora la lista sale de la
+   unión de las dos tablas.
+
+   Como consecuencia, la columna "incidencias por contenedor" pasó a ser
+   **"por punto"**, dividiendo por contenedores más instalaciones: ahora una
+   incidencia puede colgar de cualquiera de los dos y dividir solo por
+   contenedores daría una cifra inflada.
+
+**En pantalla.** En el mapa de Incidencias, los puntos de reciclaje también
+se pueden seleccionar, y el botón "Reportar problema" funciona igual. Las
+listas muestran una etiqueta violeta "Instalación" para distinguirlas de un
+vistazo, y el aviso que le llega al administrador nombra la planta en lugar
+de un contenedor.
+
+### Qué se probó
+
+- **28 comprobaciones contra MySQL**: que cada tipo de incidencia guarde lo
+  suyo y deje el otro campo en null, que el historial las traiga a las dos
+  con su nombre y su zona, que el filtro por zona funcione para ambas, que el
+  CHECK rechace los dos casos imposibles, y que borrar una instalación se
+  lleve sus incidencias.
+- **10 por HTTP**: el operario de clasificación reportando sobre su planta,
+  los cuatro errores de validación (sin objetivo, con los dos, y cada uno
+  inexistente), y que el aviso al administrador nombre la planta.
+- **Regresión completa** de las suites anteriores: historial 29/29,
+  informes 57/57, notificaciones 25/25.
+- Las **129 pruebas unitarias** del proyecto en verde.

@@ -19,20 +19,29 @@ require __DIR__ . '/app/models/Maquinaria.php';
 require __DIR__ . '/app/models/RepositorioMaquinaria.php';
 require __DIR__ . '/app/models/Incidencia.php';
 require __DIR__ . '/app/models/RepositorioIncidencias.php';
+require __DIR__ . '/app/models/RepositorioInformes.php';
+require __DIR__ . '/app/models/Notificacion.php';
+require __DIR__ . '/app/models/RepositorioNotificaciones.php';
 require __DIR__ . '/app/controllers/ControladorBase.php';
 require __DIR__ . '/app/controllers/ContenedorController.php';
 require __DIR__ . '/app/controllers/InstalacionController.php';
 require __DIR__ . '/app/controllers/MaquinariaController.php';
 require __DIR__ . '/app/controllers/IncidenciaController.php';
+require __DIR__ . '/app/controllers/InformeController.php';
+require __DIR__ . '/app/controllers/NotificacionController.php';
 
 use App\Models\RepositorioContenedores;
 use App\Models\RepositorioInstalaciones;
 use App\Models\RepositorioMaquinaria;
 use App\Models\RepositorioIncidencias;
+use App\Models\RepositorioInformes;
+use App\Models\RepositorioNotificaciones;
 use App\Controllers\ContenedorController;
 use App\Controllers\InstalacionController;
 use App\Controllers\MaquinariaController;
 use App\Controllers\IncidenciaController;
+use App\Controllers\InformeController;
+use App\Controllers\NotificacionController;
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
@@ -57,7 +66,10 @@ $controller = new ContenedorController($repoContenedores);
 $repoInstalaciones = new RepositorioInstalaciones();
 $instalacionCtrl = new InstalacionController($repoInstalaciones);
 $maquinariaCtrl  = new MaquinariaController(new RepositorioMaquinaria(), $repoInstalaciones);
-$incidenciaCtrl  = new IncidenciaController(new RepositorioIncidencias(), $repoContenedores);
+$repoNotis       = new RepositorioNotificaciones();
+$incidenciaCtrl  = new IncidenciaController(new RepositorioIncidencias(), $repoContenedores, $repoNotis, $repoInstalaciones);
+$notificacionCtrl = new NotificacionController($repoNotis);
+$informeCtrl     = new InformeController(new RepositorioInformes());
 
 switch ($metodo . ' ' . $ruta) {
     case 'GET /contenedores':
@@ -140,6 +152,28 @@ switch ($metodo . ' ' . $ruta) {
     case 'POST /incidencias/eliminar':
         $incidenciaCtrl->eliminar();
         break;
+    // ---- Notificaciones (punto "notificaciones o alertas" de la letra) ----
+    case 'GET /notificaciones':
+        $notificacionCtrl->listar();
+        break;
+
+    case 'POST /notificaciones/leer':
+        $notificacionCtrl->marcar();
+        break;
+
+    case 'POST /notificaciones/leer-todas':
+        $notificacionCtrl->marcarTodas();
+        break;
+
+    // ---- Informes y reportes (requerimientos 3.1.4.2 a 3.1.4.6) ----
+    case 'GET /informes':
+        $informeCtrl->resumen();
+        break;
+
+    case 'GET /informes/exportar':
+        $informeCtrl->exportar();
+        break;
+
 
     default:
         http_response_code(404);

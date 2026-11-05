@@ -18,7 +18,7 @@ class RepositorioIncidencias extends RepositorioSql
     {
         $i = new Incidencia(
             (int)$f['id'],
-            (int)$f['contenedor_id'],
+            $f['contenedor_id'] !== null ? (int)$f['contenedor_id'] : null,
             $f['tipo'],
             $f['descripcion'],
             $f['gravedad'],
@@ -27,11 +27,18 @@ class RepositorioIncidencias extends RepositorioSql
             $f['reportado_por'] !== null ? (int)$f['reportado_por'] : null,
             $f['reportado_por_nombre'] ?? '',
             (string)$f['fecha_reporte'],
-            $f['fecha_resolucion'] !== null ? (string)$f['fecha_resolucion'] : null
+            $f['fecha_resolucion'] !== null ? (string)$f['fecha_resolucion'] : null,
+            isset($f['instalacion_id']) && $f['instalacion_id'] !== null ? (int)$f['instalacion_id'] : null
         );
-        // Si la consulta unió con contenedor, aprovechamos esos datos.
-        if (array_key_exists('zona', $f) || array_key_exists('contenedor_codigo', $f)) {
-            $i->setDatosContenedor($f['zona'] ?? null, $f['contenedor_codigo'] ?? null);
+        // Si la consulta unió con contenedor o instalación, aprovechamos esos datos.
+        if (array_key_exists('zona', $f)
+            || array_key_exists('contenedor_codigo', $f)
+            || array_key_exists('instalacion_nombre', $f)) {
+            $i->setDatosContenedor(
+                $f['zona'] ?? null,
+                $f['contenedor_codigo'] ?? null,
+                $f['instalacion_nombre'] ?? null
+            );
         }
         return $i;
     }
@@ -42,10 +49,10 @@ class RepositorioIncidencias extends RepositorioSql
     {
         $this->consulta(
             'INSERT INTO incidencia
-                (id, contenedor_id, tipo, descripcion, gravedad, estado, cuadrilla_id,
+                (id, contenedor_id, instalacion_id, tipo, descripcion, gravedad, estado, cuadrilla_id,
                  reportado_por, reportado_por_nombre, fecha_reporte)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
-            [$i->getId(), $i->getContenedorId(), $i->getTipo(), $i->getDescripcion(),
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
+            [$i->getId(), $i->getContenedorId(), $i->getInstalacionId(), $i->getTipo(), $i->getDescripcion(),
              $i->getGravedad(), $i->getEstado(), $i->getCuadrillaId(),
              $i->getReportadoPor(), $i->getReportadoPorNombre()]
         );
@@ -104,9 +111,9 @@ class RepositorioIncidencias extends RepositorioSql
             // asignó municipio: son los que quedarían invisibles en un
             // informe por zona si no se pudieran listar.
             if ($zona === 'sin-zona') {
-                $condiciones[] = "(c.zona IS NULL OR c.zona = '')";
+                $condiciones[] = "(COALESCE(c.zona, ins.zona) IS NULL OR COALESCE(c.zona, ins.zona) = '')";
             } else {
-                $condiciones[] = 'c.zona = ?';
+                $condiciones[] = 'COALESCE(c.zona, ins.zona) = ?';
                 $params[] = $zona;
             }
         }
@@ -121,9 +128,17 @@ class RepositorioIncidencias extends RepositorioSql
 
         $where = $condiciones ? 'WHERE ' . implode(' AND ', $condiciones) : '';
 
-        $sql = "SELECT i.*, c.zona AS zona, c.codigo AS contenedor_codigo
+        // LEFT JOIN a las dos tablas porque la incidencia cuelga de una o de
+        // la otra: con un JOIN común, las que refieren a una instalación
+        // desaparecerían del historial sin que nadie se entere.
+        // La zona sale de la que corresponda.
+        $sql = "SELECT i.*,
+                       COALESCE(c.zona, ins.zona) AS zona,
+                       c.codigo  AS contenedor_codigo,
+                       ins.nombre AS instalacion_nombre
                 FROM incidencia i
-                JOIN contenedor c ON c.id = i.contenedor_id
+                LEFT JOIN contenedor  c   ON c.id   = i.contenedor_id
+                LEFT JOIN instalacion ins ON ins.id = i.instalacion_id
                 $where
                 ORDER BY COALESCE(i.fecha_resolucion, i.fecha_reporte) DESC";
 
@@ -146,12 +161,13 @@ class RepositorioIncidencias extends RepositorioSql
             $params[] = $estado;
         }
         $filas = $this->filas(
-            "SELECT COALESCE(NULLIF(c.zona, ''), 'Sin zona asignada') AS zona,
+            "SELECT COALESCE(NULLIF(COALESCE(c.zona, ins.zona), ''), 'Sin zona asignada') AS zona,
                     COUNT(*) AS total
              FROM incidencia i
-             JOIN contenedor c ON c.id = i.contenedor_id
+             LEFT JOIN contenedor  c   ON c.id   = i.contenedor_id
+             LEFT JOIN instalacion ins ON ins.id = i.instalacion_id
              $where
-             GROUP BY COALESCE(NULLIF(c.zona, ''), 'Sin zona asignada')
+             GROUP BY COALESCE(NULLIF(COALESCE(c.zona, ins.zona), ''), 'Sin zona asignada')
              ORDER BY total DESC, zona", $params
         );
         return array_map(

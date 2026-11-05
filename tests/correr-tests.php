@@ -39,6 +39,7 @@ require $base . '/api-gestion/app/models/PlantaClasificacion.php';
 require $base . '/api-gestion/app/models/Vertedero.php';
 require $base . '/api-gestion/app/models/Maquinaria.php';
 require $base . '/api-gestion/app/models/Incidencia.php';
+require $base . '/api-gestion/app/models/Notificacion.php';
 
 // ---- Clases de recolección ----
 require $base . '/api-recoleccion/app/models/Camion.php';
@@ -237,6 +238,132 @@ Test::igual('Tipo legible de falta de recolección', 'Falta de recolección', $o
 Test::igual('Gravedad por defecto si no se aclara', 'media', $otra->getGravedad());
 
 // ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// Una incidencia refiere a un contenedor O a una instalación
+// (requerimientos 3.1.2.1.3 y 3.1.2.2.3). Nunca a las dos ni a ninguna:
+// la base lo garantiza con un CHECK y el controlador lo valida antes
+// para poder dar un error entendible.
+Test::grupo('Incidencias: sobre un contenedor o sobre una instalación');
+
+$sobreCont = new Incidencia(20, 5, 'rotura', 'Tapa rota', 'alta');
+Test::igual('Sobre contenedor: guarda el contenedor', 5, $sobreCont->getContenedorId());
+Test::igual('…y la instalación queda en null',        null, $sobreCont->getInstalacionId());
+Test::igual('getObjetivo() dice "contenedor"', 'contenedor', $sobreCont->getObjetivo());
+
+$sobreInst = new Incidencia(21, null, 'otro', 'Cinta parada', 'alta',
+                            'abierta', null, null, 'Operario', '', null, 9);
+Test::igual('Sobre instalación: guarda la instalación', 9, $sobreInst->getInstalacionId());
+Test::igual('…y el contenedor queda en null',           null, $sobreInst->getContenedorId());
+Test::igual('getObjetivo() dice "instalacion"', 'instalacion', $sobreInst->getObjetivo());
+
+// getDondeLegible() evita que cada pantalla tenga que preguntar de qué
+// tipo es la incidencia para saber cómo nombrarla.
+$sobreCont->setDatosContenedor('Municipio CH', 'CNT-210', null);
+Test::igual('Nombra el contenedor por su código', 'CNT-210', $sobreCont->getDondeLegible());
+$sobreInst->setDatosContenedor('Municipio F', null, 'Planta Este');
+Test::igual('Y la instalación por su nombre', 'Planta Este', $sobreInst->getDondeLegible());
+
+// Sin los datos del JOIN tiene que decir algo útil igual, no romperse.
+$pelada = new Incidencia(22, null, 'otro', 'x', 'baja', 'abierta', null, null, '', '', null, 77);
+Test::igual('Sin el JOIN, cae en el id', 'instalación #77', $pelada->getDondeLegible());
+
+$ji = $sobreInst->jsonSerialize();
+Test::igual('El JSON lleva el objetivo',   'instalacion', $ji['objetivo']);
+Test::igual('…el id de la instalación',    9,             $ji['instalacionId']);
+Test::igual('…su nombre',                  'Planta Este', $ji['instalacionNombre']);
+Test::igual('…y "donde" ya resuelto',      'Planta Este', $ji['donde']);
+Test::igual('La zona sale de la instalación', 'Municipio F', $ji['zona']);
+
+// Las instalaciones ahora también tienen zona, para que sus incidencias
+// entren en los informes por zona (3.1.4.1 y 3.1.4.3).
+Test::grupo('Instalaciones: también tienen zona');
+$planta = new PlantaClasificacion(30, 'Planta Oeste', 'Camino X', 200, 'ambos',
+                                  'operativa', -34.85, -56.10, 0, 'Municipio F');
+Test::igual('Guarda su municipio', 'Municipio F', $planta->getZona());
+Test::comprobar('El JSON lo incluye', array_key_exists('zona', $planta->jsonSerialize()));
+$sinZona = new Vertedero(31, 'Vertedero Nuevo', 'Camino Y', 500);
+Test::igual('Puede no tener zona asignada', null, $sinZona->getZona());
+$sinZona->setZona('Municipio A');
+Test::igual('…y asignársela después', 'Municipio A', $sinZona->getZona());
+
+// ═══════════════════════════════════════════════════════════════
+// Notificaciones (punto "notificaciones o alertas" de la letra).
+// Hay una fila por DESTINATARIO, no por evento: si a una cuadrilla de
+// tres se le asigna una incidencia se crean tres notificaciones, y cada
+// operario marca la suya sin afectar a los demás.
+Test::grupo('Notificaciones: una por destinatario');
+
+use App\Models\Notificacion;
+
+$noti = new Notificacion(1, 7, 'incidencia_asignada', 'Les asignaron una incidencia',
+                         'Desborde en CNT-102 (Av. Italia).', 'alta', 42);
+
+Test::igual('Sabe a quién va dirigida',      7, $noti->getUsuarioId());
+Test::igual('Guarda el tipo',                'incidencia_asignada', $noti->getTipo());
+Test::igual('Guarda la gravedad',            'alta', $noti->getGravedad());
+Test::igual('Sabe a qué incidencia refiere', 42, $noti->getIncidenciaId());
+Test::comprobar('Nace sin leer',             !$noti->estaLeida());
+$noti->marcarLeida();
+Test::comprobar('Y se puede marcar leída',   $noti->estaLeida());
+
+// Un tipo que no existe no puede romper la pantalla: cae en 'aviso',
+// que es el genérico, en vez de guardarse tal cual.
+$raro = new Notificacion(2, 7, 'tipo_inventado', 'Hola', 'Qué tal');
+Test::igual('Un tipo desconocido cae en "aviso"', 'aviso', $raro->getTipo());
+Test::igual('Hay 4 tipos contemplados', 4, count(Notificacion::TIPOS));
+
+// Cada tipo trae su ícono, así la lista se lee de un vistazo.
+Test::igual('Incidencia nueva usa el ícono de alerta', 'report_problem',
+    (new Notificacion(3, 1, 'incidencia_nueva', 't', 'm'))->getIcono());
+Test::igual('Asignada usa el de asignación', 'assignment_ind',
+    (new Notificacion(4, 1, 'incidencia_asignada', 't', 'm'))->getIcono());
+Test::igual('Resuelta usa el de tarea cumplida', 'task_alt',
+    (new Notificacion(5, 1, 'incidencia_resuelta', 't', 'm'))->getIcono());
+Test::igual('El genérico usa la campana', 'notifications',
+    (new Notificacion(6, 1, 'aviso', 't', 'm'))->getIcono());
+
+$jn = $noti->jsonSerialize();
+Test::comprobar('El JSON lleva el ícono ya resuelto', isset($jn['icono']));
+Test::comprobar('…y si está leída', array_key_exists('leida', $jn));
+Test::igual('…y el id de la incidencia para poder ir hasta ella', 42, $jn['incidenciaId']);
+
+// Una notificación suelta, sin incidencia detrás, también es válida.
+$suelta = new Notificacion(7, 3, 'aviso', 'Mantenimiento', 'El sistema estará fuera de línea.');
+Test::igual('Puede no referir a ninguna incidencia', null, $suelta->getIncidenciaId());
+
+// ═══════════════════════════════════════════════════════════════
+// Capacidad del contenedor (requerimiento 3.1.4.2).
+// Sin este dato no hay forma de estimar el volumen recolectado, y si
+// entraran capacidades inventadas el informe mostraría litros que no
+// existen. Por eso se valida contra la lista de capacidades reales.
+Test::grupo('Contenedores: la capacidad habilita el informe de volumen');
+
+Test::igual('Un contenedor nuevo arranca en 1100 L', 1100, $c1->getCapacidadLitros());
+Test::igual('La constante por defecto es 1100', 1100, Contenedor::CAPACIDAD_POR_DEFECTO);
+Test::comprobar('El JSON lleva la capacidad', array_key_exists('capacidadLitros', $c1->jsonSerialize()));
+
+$grande = new Contenedor(20, 'CNT-700', 'Av. Italia', 'mezclado', 'operativo',
+                         -34.90, -56.15, 'vacio', 'Municipio D', 2400);
+Test::igual('Se puede crear con 2400 L', 2400, $grande->getCapacidadLitros());
+$grande->setCapacidadLitros(780);
+Test::igual('…y cambiarla después', 780, $grande->getCapacidadLitros());
+
+Test::comprobar('780 es una capacidad válida',  Contenedor::capacidadValida(780));
+Test::comprobar('1100 también',                 Contenedor::capacidadValida(1100));
+Test::comprobar('2400 también',                 Contenedor::capacidadValida(2400));
+Test::comprobar('1000 NO: no es una capacidad que use la Intendencia',
+    !Contenedor::capacidadValida(1000));
+Test::comprobar('0 NO, porque daría volumen cero sin avisar',
+    !Contenedor::capacidadValida(0));
+Test::comprobar('Un negativo NO, porque restaría del total',
+    !Contenedor::capacidadValida(-1100));
+Test::igual('Hay 3 capacidades contempladas', 3, count(Contenedor::CAPACIDADES));
+
+// La cuenta del informe: capacidad x pasadas x factor de llenado.
+$litrosPasada = $c1->getCapacidadLitros() + $grande->getCapacidadLitros(); // 1100 + 780
+Test::igual('Dos contenedores en una ruta suman 1880 L por pasada', 1880, $litrosPasada);
+Test::igual('1880 x 4 pasadas x 0,85 = 6392 L', 6392, (int)round($litrosPasada * 4 * 0.85));
+
 // ═══════════════════════════════════════════════════════════════
 // Historial por zona o por contenedor (requerimiento 3.1.1.3.4).
 // La zona NO se guarda en la incidencia: la trae el repositorio con un

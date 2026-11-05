@@ -35,6 +35,20 @@ class Contenedor implements \JsonSerializable
      * alcanza con cambiar esta lista y la constante ZONAS del frontend.
      * No hace falta tocar la base: la columna es un VARCHAR.
      */
+    /**
+     * Capacidades de contenedor, en litros (requerimiento 3.1.4.2).
+     * 780 y 1100 son los contenedores plásticos que coloca la Intendencia;
+     * 2400 los metálicos grandes. Es lo que permite estimar el volumen
+     * recolectado sin inventar un número.
+     */
+    public const CAPACIDADES = [780, 1100, 2400];
+    public const CAPACIDAD_POR_DEFECTO = 1100;
+
+    public static function capacidadValida(int $litros): bool
+    {
+        return in_array($litros, self::CAPACIDADES, true);
+    }
+
     public const ZONAS = [
         'Municipio A',
         'Municipio B',
@@ -61,6 +75,7 @@ class Contenedor implements \JsonSerializable
     private ?float $lat;
     private ?float $lng;
     private ?string $zona;        // municipio: 'Municipio CH', 'Municipio E'... o null
+    private int $capacidadLitros; // 780 | 1100 | 2400
 
     public function __construct(
         int $id,
@@ -71,7 +86,8 @@ class Contenedor implements \JsonSerializable
         ?float $lat = null,
         ?float $lng = null,
         string $nivelLlenado = 'vacio',
-        ?string $zona = null
+        ?string $zona = null,
+        int $capacidadLitros = self::CAPACIDAD_POR_DEFECTO
     ) {
         $this->id = $id;
         $this->codigo = $codigo;
@@ -82,6 +98,7 @@ class Contenedor implements \JsonSerializable
         $this->lat = $lat;
         $this->lng = $lng;
         $this->zona = $zona;
+        $this->capacidadLitros = $capacidadLitros;
     }
 
     public function getId(): int              { return $this->id; }
@@ -93,6 +110,7 @@ class Contenedor implements \JsonSerializable
     public function getLat(): ?float          { return $this->lat; }
     public function getLng(): ?float          { return $this->lng; }
     public function getZona(): ?string        { return $this->zona; }
+    public function getCapacidadLitros(): int { return $this->capacidadLitros; }
 
     public function setCodigo(string $c): void      { $this->codigo = $c; }
     public function setDireccion(string $d): void   { $this->direccion = $d; }
@@ -102,6 +120,7 @@ class Contenedor implements \JsonSerializable
     public function setLat(?float $l): void         { $this->lat = $l; }
     public function setLng(?float $l): void         { $this->lng = $l; }
     public function setZona(?string $z): void       { $this->zona = $z; }
+    public function setCapacidadLitros(int $c): void { $this->capacidadLitros = $c; }
 
     public function jsonSerialize(): array
     {
@@ -110,6 +129,7 @@ class Contenedor implements \JsonSerializable
             'codigo'      => $this->codigo,
             'direccion'   => $this->direccion,
             'zona'        => $this->zona,
+            'capacidadLitros' => $this->capacidadLitros,
             'tipoResiduo' => $this->tipoResiduo,
             'estado'       => $this->estado,
             'nivelLlenado' => $this->nivelLlenado,
