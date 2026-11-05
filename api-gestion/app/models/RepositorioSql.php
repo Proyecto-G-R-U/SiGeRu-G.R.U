@@ -5,23 +5,15 @@ namespace App\Models;
 
 use PDO;
 
-/**
- * RepositorioSql: clase base ABSTRACTA de todos los repositorios (versión SQL).
- *
- * Reemplaza a la antigua RepositorioJson. En lugar de leer/escribir un archivo,
- * ahora consulta la base de datos MySQL con PDO. Concentra lo común:
- *   - la conexión PDO (una sola, compartida entre repositorios),
- *   - todos(), buscarPorId(), eliminar(),
- *   - helpers para ejecutar consultas.
- *
- * Cada repositorio hijo solo define lo específico:
- *   - tabla():    nombre de su tabla (ej. "usuario")
- *   - aObjeto():  cómo convertir una fila de la BD en su objeto
- *   - sus métodos propios (buscarPorEmail, asignarCuadrilla, etc.)
- *
- * Config de conexión: XAMPP por defecto (host localhost, usuario root, sin
- * contraseña, base "sigeru"). Si cambiás las credenciales, se editan acá.
- */
+/** * RepositorioSql: clase base ABSTRACTA de todos los repositorios (versión SQL). * * 
+ Reemplaza a la antigua RepositorioJson. En lugar de leer/escribir un archivo, * ahora 
+ consulta la base de datos MySQL con PDO. Concentra lo común: * - la conexión PDO (una sola, 
+ compartida entre repositorios), * - todos(), buscarPorId(), eliminar(), * - helpers para 
+ ejecutar consultas. * * Cada repositorio hijo solo define lo específico: * - tabla(): 
+ nombre de su tabla (ej. "usuario") * - aObjeto(): cómo convertir una fila de la BD en su 
+ objeto * - sus métodos propios (buscarPorEmail, asignarCuadrilla, etc.) * * Config de 
+ conexión: XAMPP por defecto (host localhost, usuario root, sin * contraseña, base 
+ "sigeru"). Si cambiás las credenciales, se editan acá. */
 abstract class RepositorioSql
 {
     // --- Configuración de conexión (XAMPP por defecto) ---
@@ -37,7 +29,8 @@ abstract class RepositorioSql
 
     protected PDO $db;
 
-    public function __construct()
+    pu $dsn = 'mysql:host=' . self::HOST . ';dbname=' . self::BASE . ';charset=utf8mb4';
+                self::$pdo = new PDO($dsn, self::USER, self::PASS, [blic function __construct()
     {
         $this->db = self::conexion();
     }
@@ -47,8 +40,9 @@ abstract class RepositorioSql
     {
         if (self::$pdo === null) {
             try {
-                $dsn = 'mysql:host=' . self::HOST . ';dbname=' . self::BASE . ';charset=utf8mb4';
-                self::$pdo = new PDO($dsn, self::USER, self::PASS, [
+                $dsn = 'mysql:host=' . self::config('DB_HOST', self::HOST)
+     . ';dbname=' . self::config('DB_NAME', self::BASE) . ';charset=utf8mb4';
+self::$pdo = new PDO($dsn, self::config('DB_USER', self::USER), self::config('DB_PASS', self::PASS), [
                     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,   // errores como excepciones
                     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,         // filas como arrays asociativos
                     PDO::ATTR_EMULATE_PREPARES   => false,                    // prepares reales (más seguro)
@@ -98,9 +92,19 @@ abstract class RepositorioSql
         }
     }
 
-    /** Traduce un error de MySQL a una respuesta JSON entendible y corta. */
-    private function errorSql(\PDOException $e): never
+
+
+
+      private static function config(string $variable, string $porDefecto): string
     {
+        $valor = getenv($variable);
+        return ($valor === false || $valor === '') ? $porDefecto : $valor;
+    }
+
+
+
+    /** Traduce un error de MySQL a una respuesta JSON entendible y corta. */ private 
+    function errorSql(\PDOException $e): never {
         $codigo = $e->errorInfo[1] ?? 0;
         $mensaje = match (true) {
             // 1062: clave duplicada (ej. dos contenedores con el mismo código)
@@ -172,4 +176,5 @@ abstract class RepositorioSql
         $f = $this->fila('SELECT COALESCE(MAX(id), 0) + 1 AS proximo FROM ' . $this->tabla());
         return (int)$f['proximo'];
     }
+
 }

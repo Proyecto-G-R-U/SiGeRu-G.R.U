@@ -1,0 +1,79 @@
+# SiGeRU — tres servidores, tres contenedores
+name: sigeru
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    container_name: sigeru-app
+    hostname: sigeru-app
+    ports:
+      - "${PUERTO_WEB:-80}:80"
+    environment:
+      DB_HOST: bd
+      DB_NAME: ${DB_NAME:-sigeru}
+      DB_USER: ${DB_USER:?Falta DB_USER en .env}
+      DB_PASS: ${DB_PASS:?Falta DB_PASS en .env}
+    depends_on:
+      bd:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      sigeru:
+        ipv4_address: 172.30.0.10
+
+  bd:
+    build:
+      context: .
+      dockerfile: docker/bd/Dockerfile
+    container_name: sigeru-bd
+    hostname: sigeru-bd
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Falta MYSQL_ROOT_PASSWORD en .env}
+      DB_NAME: ${DB_NAME:-sigeru}
+      DB_USER: ${DB_USER:?Falta DB_USER en .env}
+      DB_PASS: ${DB_PASS:?Falta DB_PASS en .env}
+      IP_APP: 172.30.0.10
+    volumes:
+      - bd-datos:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_ROOT_PASSWORD\" mysqladmin ping -uroot -h 127.0.0.1 --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      sigeru:
+        ipv4_address: 172.30.0.20
+
+  respaldo:
+    build:
+      context: .
+      dockerfile: docker/respaldo/Dockerfile
+    container_name: sigeru-respaldo
+    hostname: sigeru-respaldo
+    volumes:
+      - respaldo-copias:/srv/respaldos
+      - respaldo-claves:/etc/ssh/hostkeys
+      - respaldo-home:/home/respaldo
+    restart: unless-stopped
+    networks:
+      sigeru:
+        ipv4_address: 172.30.0.30
+
+volumes:
+  bd-datos:
+  respaldo-copias:
+  respaldo-claves:
+  respaldo-home:
+
+networks:
+  sigeru:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+
+

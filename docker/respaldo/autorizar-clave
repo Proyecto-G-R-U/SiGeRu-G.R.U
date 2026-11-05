@@ -1,0 +1,16 @@
+#!/bin/bash
+# Uso (desde la VM):  docker exec -i sigeru-respaldo autorizar-clave < clave.pub
+# Agrega la clave con "restrict": sin terminal ni reenvío de puertos,
+# la clave sirve para copiar archivos y nada más.
+archivo=/home/respaldo/.ssh/authorized_keys
+read -r linea
+if [[ ! $linea =~ ^(ssh-ed25519|ssh-rsa)\ [A-Za-z0-9+/=]+ ]]; then
+    echo "No es una clave pública válida" >&2; exit 1
+fi
+cuerpo=$(awk '{print $2}' <<< "$linea")
+if grep -qF "$cuerpo" "$archivo"; then
+    echo "La clave ya estaba autorizada"; exit 0
+fi
+echo "restrict $linea" >> "$archivo"
+echo "Clave autorizada con restrict"
+

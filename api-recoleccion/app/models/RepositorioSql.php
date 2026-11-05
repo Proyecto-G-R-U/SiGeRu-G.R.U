@@ -19,12 +19,13 @@ use PDO;
  *   - aObjeto():  cómo convertir una fila de la BD en su objeto
  *   - sus métodos propios (buscarPorEmail, asignarCuadrilla, etc.)
  *
- * Config de conexión: XAMPP por defecto (host localhost, usuario root, sin
- * contraseña, base "sigeru"). Si cambiás las credenciales, se editan acá.
+ * Config de conexión: primero mira las variables de entorno que manda Docker
+ * (DB_HOST, DB_NAME, DB_USER, DB_PASS). Si no existen (XAMPP), usa los
+ * valores por defecto de abajo, así funciona igual en las dos situaciones.
  */
 abstract class RepositorioSql
 {
-    // --- Configuración de conexión (XAMPP por defecto) ---
+    // --- Valores por defecto (XAMPP) si no hay variables de entorno ---
     // 127.0.0.1 en vez de 'localhost': en Windows, 'localhost' a veces
     // resuelve por IPv6 y la conexión falla aunque MySQL esté corriendo.
     private const HOST = '127.0.0.1';
@@ -42,13 +43,21 @@ abstract class RepositorioSql
         $this->db = self::conexion();
     }
 
+    /** Valor de una variable de entorno, o el valor por defecto si no está. */
+    private static function config(string $variable, string $porDefecto): string
+    {
+        $valor = getenv($variable);
+        return ($valor === false || $valor === '') ? $porDefecto : $valor;
+    }
+
     /** Devuelve la conexión PDO, creándola la primera vez (patrón singleton). */
     protected static function conexion(): PDO
     {
         if (self::$pdo === null) {
             try {
-                $dsn = 'mysql:host=' . self::HOST . ';dbname=' . self::BASE . ';charset=utf8mb4';
-                self::$pdo = new PDO($dsn, self::USER, self::PASS, [
+                $dsn = 'mysql:host=' . self::config('DB_HOST', self::HOST)
+                     . ';dbname=' . self::config('DB_NAME', self::BASE) . ';charset=utf8mb4';
+                self::$pdo = new PDO($dsn, self::config('DB_USER', self::USER), self::config('DB_PASS', self::PASS), [
                     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,   // errores como excepciones
                     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,         // filas como arrays asociativos
                     PDO::ATTR_EMULATE_PREPARES   => false,                    // prepares reales (más seguro)
@@ -59,8 +68,8 @@ abstract class RepositorioSql
                 http_response_code(500);
                 header('Content-Type: application/json; charset=utf-8');
                 echo json_encode([
-                    'error'   => 'No se pudo conectar a la base de datos "' . self::BASE . '". ' .
-                                 'Verificá que MySQL esté corriendo en XAMPP y que hayas importado base.sql.',
+                    'error'   => 'No se pudo conectar a la base de datos "' . self::config('DB_NAME', self::BASE) . '". ' .
+                                 'Verificá que MySQL esté corriendo y que hayas importado base.sql.',
                     'detalle' => $e->getMessage(),
                 ], JSON_UNESCAPED_UNICODE);
                 exit;
@@ -69,15 +78,6 @@ abstract class RepositorioSql
         return self::$pdo;
     }
 
-    /** Nombre de la tabla de esta entidad. */
-    abstract protected function tabla(): string;
-
-    /** Convierte una fila de la BD (array) en el objeto de la entidad. */
-    abstract protected function aObjeto(array $fila): object;
-
-    // ---------------- Helpers de consulta ----------------
-
-    /** Ejecuta una consulta con parámetros y devuelve el statement. */
     /**
      * Ejecuta una consulta con parámetros y devuelve el statement.
      *
