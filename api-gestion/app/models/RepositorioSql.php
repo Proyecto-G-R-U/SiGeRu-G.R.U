@@ -5,18 +5,27 @@ namespace App\Models;
 
 use PDO;
 
-/** * RepositorioSql: clase base ABSTRACTA de todos los repositorios (versión SQL). * * 
- Reemplaza a la antigua RepositorioJson. En lugar de leer/escribir un archivo, * ahora 
- consulta la base de datos MySQL con PDO. Concentra lo común: * - la conexión PDO (una sola, 
- compartida entre repositorios), * - todos(), buscarPorId(), eliminar(), * - helpers para 
- ejecutar consultas. * * Cada repositorio hijo solo define lo específico: * - tabla(): 
- nombre de su tabla (ej. "usuario") * - aObjeto(): cómo convertir una fila de la BD en su 
- objeto * - sus métodos propios (buscarPorEmail, asignarCuadrilla, etc.) * * Config de 
- conexión: XAMPP por defecto (host localhost, usuario root, sin * contraseña, base 
- "sigeru"). Si cambiás las credenciales, se editan acá. */
+/**
+ * RepositorioSql: clase base ABSTRACTA de todos los repositorios (versión SQL).
+ *
+ * Reemplaza a la antigua RepositorioJson. En lugar de leer/escribir un archivo,
+ * ahora consulta la base de datos MySQL con PDO. Concentra lo común:
+ *   - la conexión PDO (una sola, compartida entre repositorios),
+ *   - todos(), buscarPorId(), eliminar(),
+ *   - helpers para ejecutar consultas.
+ *
+ * Cada repositorio hijo solo define lo específico:
+ *   - tabla():    nombre de su tabla (ej. "usuario")
+ *   - aObjeto():  cómo convertir una fila de la BD en su objeto
+ *   - sus métodos propios (buscarPorEmail, asignarCuadrilla, etc.)
+ *
+ * Config de conexión: primero mira las variables de entorno que manda Docker
+ * (DB_HOST, DB_NAME, DB_USER, DB_PASS). Si no existen (XAMPP), usa los
+ * valores por defecto de abajo, así funciona igual en las dos situaciones.
+ */
 abstract class RepositorioSql
 {
-    // --- Configuración de conexión (XAMPP por defecto) ---
+    // --- Valores por defecto (XAMPP) si no hay variables de entorno ---
     // 127.0.0.1 en vez de 'localhost': en Windows, 'localhost' a veces
     // resuelve por IPv6 y la conexión falla aunque MySQL esté corriendo.
     private const HOST = '127.0.0.1';
@@ -29,10 +38,16 @@ abstract class RepositorioSql
 
     protected PDO $db;
 
-    pu $dsn = 'mysql:host=' . self::HOST . ';dbname=' . self::BASE . ';charset=utf8mb4';
-                self::$pdo = new PDO($dsn, self::USER, self::PASS, [blic function __construct()
+    public function __construct()
     {
         $this->db = self::conexion();
+    }
+
+    /** Valor de una variable de entorno, o el valor por defecto si no está. */
+    private static function config(string $variable, string $porDefecto): string
+    {
+        $valor = getenv($variable);
+        return ($valor === false || $valor === '') ? $porDefecto : $valor;
     }
 
     /** Devuelve la conexión PDO, creándola la primera vez (patrón singleton). */
@@ -41,8 +56,8 @@ abstract class RepositorioSql
         if (self::$pdo === null) {
             try {
                 $dsn = 'mysql:host=' . self::config('DB_HOST', self::HOST)
-     . ';dbname=' . self::config('DB_NAME', self::BASE) . ';charset=utf8mb4';
-self::$pdo = new PDO($dsn, self::config('DB_USER', self::USER), self::config('DB_PASS', self::PASS), [
+                     . ';dbname=' . self::config('DB_NAME', self::BASE) . ';charset=utf8mb4';
+                self::$pdo = new PDO($dsn, self::config('DB_USER', self::USER), self::config('DB_PASS', self::PASS), [
                     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,   // errores como excepciones
                     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,         // filas como arrays asociativos
                     PDO::ATTR_EMULATE_PREPARES   => false,                    // prepares reales (más seguro)
@@ -53,8 +68,8 @@ self::$pdo = new PDO($dsn, self::config('DB_USER', self::USER), self::config('DB
                 http_response_code(500);
                 header('Content-Type: application/json; charset=utf-8');
                 echo json_encode([
-                    'error'   => 'No se pudo conectar a la base de datos "' . self::BASE . '". ' .
-                                 'Verificá que MySQL esté corriendo en XAMPP y que hayas importado base.sql.',
+                    'error'   => 'No se pudo conectar a la base de datos "' . self::config('DB_NAME', self::BASE) . '". ' .
+                                 'Verificá que MySQL esté corriendo y que hayas importado base.sql.',
                     'detalle' => $e->getMessage(),
                 ], JSON_UNESCAPED_UNICODE);
                 exit;
@@ -71,7 +86,6 @@ self::$pdo = new PDO($dsn, self::config('DB_USER', self::USER), self::config('DB
 
     // ---------------- Helpers de consulta ----------------
 
-    /** Ejecuta una consulta con parámetros y devuelve el statement. */
     /**
      * Ejecuta una consulta con parámetros y devuelve el statement.
      *
@@ -92,19 +106,9 @@ self::$pdo = new PDO($dsn, self::config('DB_USER', self::USER), self::config('DB
         }
     }
 
-
-
-
-      private static function config(string $variable, string $porDefecto): string
+    /** Traduce un error de MySQL a una respuesta JSON entendible y corta. */
+    private function errorSql(\PDOException $e): never
     {
-        $valor = getenv($variable);
-        return ($valor === false || $valor === '') ? $porDefecto : $valor;
-    }
-
-
-
-    /** Traduce un error de MySQL a una respuesta JSON entendible y corta. */ private 
-    function errorSql(\PDOException $e): never {
         $codigo = $e->errorInfo[1] ?? 0;
         $mensaje = match (true) {
             // 1062: clave duplicada (ej. dos contenedores con el mismo código)
@@ -176,5 +180,4 @@ self::$pdo = new PDO($dsn, self::config('DB_USER', self::USER), self::config('DB
         $f = $this->fila('SELECT COALESCE(MAX(id), 0) + 1 AS proximo FROM ' . $this->tabla());
         return (int)$f['proximo'];
     }
-
 }
